@@ -35,9 +35,14 @@ const DispatchMessageW                           = zigwin32.ui.windows_and_messa
 const MSG                                        = zigwin32.ui.windows_and_messaging.MSG;
 const PeekMessageW                               = zigwin32.ui.windows_and_messaging.PeekMessageW;
 const PM_REMOVE                                  = zigwin32.ui.windows_and_messaging.PM_REMOVE;
+const PostQuitMessage                            = zigwin32.ui.windows_and_messaging.PostQuitMessage;
 const RegisterClassExW                           = zigwin32.ui.windows_and_messaging.RegisterClassExW;
 const TranslateMessage                           = zigwin32.ui.windows_and_messaging.TranslateMessage;
 const UnregisterClassW                           = zigwin32.ui.windows_and_messaging.UnregisterClassW;
+const WINDOW_STYLE                               = zigwin32.ui.windows_and_messaging.WINDOW_STYLE;
+const WM_CLOSE                                   = zigwin32.ui.windows_and_messaging.WM_CLOSE;
+const WM_DESTROY                                 = zigwin32.ui.windows_and_messaging.WM_DESTROY;
+const WM_QUIT                                    = zigwin32.ui.windows_and_messaging.WM_QUIT;
 const WNDCLASSEXW                                = zigwin32.ui.windows_and_messaging.WNDCLASSEXW;
 // zig fmt: on
 
@@ -49,6 +54,7 @@ const global = struct {
     var main_fiber: *anyopaque = undefined;
     var main_thread_id: u32 = undefined;
     var message_fiber: *anyopaque = undefined;
+    var stop_signal = false;
 
     // Windows 10 1703 (Build 15063; April 2017; Redstone / "Creators Update")
     var win10_1703_or_later: bool = undefined;
@@ -149,23 +155,72 @@ pub fn init(_: wth.InitOptions) wth.InitError!void {
 }
 
 pub fn deinit() void {
-    const class_atom: [*:0]const u16 = blk: {
+    const class_name: [*:0]const u16 = blk: {
         @setRuntimeSafety(false);
         break :blk @ptrFromInt(global.class_atom);
     };
-    assert(UnregisterClassW(class_atom, imageBase()) != 0);
+    assert(UnregisterClassW(class_name, imageBase()) != 0);
     assert(ConvertFiberToThread() != 0);
     DeleteFiber(global.message_fiber);
 }
 
+pub inline fn sync() !void {
+    SwitchToFiber(global.message_fiber);
+    if (global.stop_signal) {
+        return error.Stop;
+    }
+}
+
+pub const Window = struct {
+    allocator: std.mem.Allocator,
+    hwnd: HWND,
+
+    pub fn emplace(window: *Window, options: wth.Window.CreateOptions) wth.Window.CreateError!void {
+        const class_name: [*:0]const u16 = blk: {
+            @setRuntimeSafety(false);
+            break :blk @ptrFromInt(global.class_atom);
+        };
+        if (CreateWindowExW(
+            @enumFromInt(0),
+            class_name,
+            L("cool window"),
+            WINDOW_STYLE.initFlags(.{ .THICKFRAME = 1, .SYSMENU = 1, .VISIBLE = 1 }),
+            0,
+            0,
+            800,
+            608,
+            null,
+            null,
+            imageBase(),
+            null,
+        )) |hwnd| {
+            window.hwnd = hwnd;
+        } else {
+            // TODO: yeah it can also be an error return from WM_{NC}CREATE please handle it
+            return error.SystemResources;
+        }
+
+        _ = options;
+    }
+
+    pub fn deinit(_: *Window) void {
+        //
+    }
+};
+
 const fiber_proc_stack_size = 2048;
 fn fiberProc(_: ?*anyopaque) callconv(WINAPI) void {
     var msg: MSG = undefined;
-    while (true) {
+    outer: while (true) {
         while (PeekMessageW(&msg, null, 0, 0, PM_REMOVE) != 0) {
-            // TODO: gate translatemessage on wanting actual-input
-            _ = TranslateMessage(&msg);
-            _ = DispatchMessageW(&msg);
+            if (msg.message != WM_QUIT) {
+                // TODO: gate translatemessage on wanting actual-input
+                _ = TranslateMessage(&msg);
+                _ = DispatchMessageW(&msg);
+            } else {
+                global.stop_signal = true;
+                break :outer;
+            }
         }
         SwitchToFiber(global.main_fiber);
     }
@@ -177,5 +232,7 @@ fn windowProc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) callconv(WINAPI) LRESULT {
+    if (message == WM_CLOSE) _ = DestroyWindow(hwnd);
+    if (message == WM_DESTROY) PostQuitMessage(0);
     return DefWindowProcW(hwnd, message, wparam, lparam);
 }
