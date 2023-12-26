@@ -46,6 +46,7 @@ const WM_CLOSE                                   = zigwin32.ui.windows_and_messa
 const WM_DESTROY                                 = zigwin32.ui.windows_and_messaging.WM_DESTROY;
 const WM_ENTERSIZEMOVE                           = zigwin32.ui.windows_and_messaging.WM_ENTERSIZEMOVE;
 const WM_EXITSIZEMOVE                            = zigwin32.ui.windows_and_messaging.WM_EXITSIZEMOVE;
+const WM_NCCREATE                                = zigwin32.ui.windows_and_messaging.WM_NCCREATE;
 const WM_TIMER                                   = zigwin32.ui.windows_and_messaging.WM_TIMER;
 const WM_QUIT                                    = zigwin32.ui.windows_and_messaging.WM_QUIT;
 const WNDCLASSEXW                                = zigwin32.ui.windows_and_messaging.WNDCLASSEXW;
@@ -240,6 +241,13 @@ fn windowProc(
     switch (message) {
         WM_CLOSE => _ = DestroyWindow(hwnd),
         WM_DESTROY => PostQuitMessage(0),
+
+        WM_NCCREATE => {
+            // Per-Monitor DPI Awareness V1
+            if (!global.win10_1703_or_later) {
+                assert(EnableNonClientDpiScaling(hwnd) != 0);
+            }
+        },
 
         WM_ENTERSIZEMOVE => {
             assert(SetTimer(hwnd, 1, 1, null) == 1);
