@@ -17,7 +17,9 @@ pub fn deinit() void {
     impl.deinit();
 }
 
-pub fn sync() !void {
+pub const SyncError = error{Shutdown};
+
+pub fn sync() SyncError!void {
     return try impl.sync();
 }
 
@@ -25,7 +27,10 @@ pub const Window = struct {
     impl: impl.Window,
 
     pub const CreateError = error{SystemResources} || std.mem.Allocator.Error;
-    pub const CreateOptions = struct {};
+    pub const CreateOptions = struct {
+        class_name: []const u8 = "wth",
+        title: []const u8 = "a nice window",
+    };
 
     pub fn create(allocator: std.mem.Allocator, options: CreateOptions) CreateError!*Window {
         const window = try allocator.create(Window);
