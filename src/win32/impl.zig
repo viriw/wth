@@ -32,16 +32,21 @@ const CreateWindowExW                            = zigwin32.ui.windows_and_messa
 const DefWindowProcW                             = zigwin32.ui.windows_and_messaging.DefWindowProcW;
 const DestroyWindow                              = zigwin32.ui.windows_and_messaging.DestroyWindow;
 const DispatchMessageW                           = zigwin32.ui.windows_and_messaging.DispatchMessageW;
+const KillTimer                                  = zigwin32.ui.windows_and_messaging.KillTimer;
 const MSG                                        = zigwin32.ui.windows_and_messaging.MSG;
 const PeekMessageW                               = zigwin32.ui.windows_and_messaging.PeekMessageW;
 const PM_REMOVE                                  = zigwin32.ui.windows_and_messaging.PM_REMOVE;
 const PostQuitMessage                            = zigwin32.ui.windows_and_messaging.PostQuitMessage;
 const RegisterClassExW                           = zigwin32.ui.windows_and_messaging.RegisterClassExW;
+const SetTimer                                   = zigwin32.ui.windows_and_messaging.SetTimer;
 const TranslateMessage                           = zigwin32.ui.windows_and_messaging.TranslateMessage;
 const UnregisterClassW                           = zigwin32.ui.windows_and_messaging.UnregisterClassW;
 const WINDOW_STYLE                               = zigwin32.ui.windows_and_messaging.WINDOW_STYLE;
 const WM_CLOSE                                   = zigwin32.ui.windows_and_messaging.WM_CLOSE;
 const WM_DESTROY                                 = zigwin32.ui.windows_and_messaging.WM_DESTROY;
+const WM_ENTERSIZEMOVE                           = zigwin32.ui.windows_and_messaging.WM_ENTERSIZEMOVE;
+const WM_EXITSIZEMOVE                            = zigwin32.ui.windows_and_messaging.WM_EXITSIZEMOVE;
+const WM_TIMER                                   = zigwin32.ui.windows_and_messaging.WM_TIMER;
 const WM_QUIT                                    = zigwin32.ui.windows_and_messaging.WM_QUIT;
 const WNDCLASSEXW                                = zigwin32.ui.windows_and_messaging.WNDCLASSEXW;
 // zig fmt: on
@@ -232,7 +237,21 @@ fn windowProc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) callconv(WINAPI) LRESULT {
-    if (message == WM_CLOSE) _ = DestroyWindow(hwnd);
-    if (message == WM_DESTROY) PostQuitMessage(0);
+    switch (message) {
+        WM_CLOSE => _ = DestroyWindow(hwnd),
+        WM_DESTROY => PostQuitMessage(0),
+
+        WM_ENTERSIZEMOVE => {
+            assert(SetTimer(hwnd, 1, 1, null) == 1);
+        },
+        WM_EXITSIZEMOVE => {
+            assert(KillTimer(hwnd, 1) != 0);
+        },
+        WM_TIMER => {
+            SwitchToFiber(global.main_fiber);
+        },
+
+        else => {},
+    }
     return DefWindowProcW(hwnd, message, wparam, lparam);
 }
