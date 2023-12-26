@@ -6,11 +6,11 @@ const impl = switch (builtin.target.os.tag) {
     else => @compileError("unsupported platform"),
 };
 
-pub const InitError = error{};
+pub const InitError = error{SystemResources};
 pub const InitOptions = struct {};
 
-pub fn init(options: InitOptions) InitError!void {
-    return try impl.init(options);
+pub fn init(init_options: InitOptions) InitError!void {
+    return try impl.init(init_options);
 }
 
 pub fn deinit() void {
