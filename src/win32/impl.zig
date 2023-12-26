@@ -43,6 +43,7 @@ const CW_USEDEFAULT                              = zigwin32.ui.windows_and_messa
 const DefWindowProcW                             = zigwin32.ui.windows_and_messaging.DefWindowProcW;
 const DestroyWindow                              = zigwin32.ui.windows_and_messaging.DestroyWindow;
 const DispatchMessageW                           = zigwin32.ui.windows_and_messaging.DispatchMessageW;
+const GET_CLASS_LONG_INDEX                       = zigwin32.ui.windows_and_messaging.GET_CLASS_LONG_INDEX;
 const GetClassInfoExW                            = zigwin32.ui.windows_and_messaging.GetClassInfoExW;
 const KillTimer                                  = zigwin32.ui.windows_and_messaging.KillTimer;
 const MSG                                        = zigwin32.ui.windows_and_messaging.MSG;
@@ -64,19 +65,28 @@ const WM_QUIT                                    = zigwin32.ui.windows_and_messa
 const WNDCLASSEXW                                = zigwin32.ui.windows_and_messaging.WNDCLASSEXW;
 // zig fmt: on
 
-// Very similar to zigwin32gen's windowlongptr.zig source supplement, but for class storage.
-const classlongptr = if (@sizeOf(usize) == 8)
-    struct {
-        pub const SetClassLongPtrW = zigwin32.ui.windows_and_messaging.SetClassLongPtrW;
-        pub const GetClassLongPtrW = zigwin32.ui.windows_and_messaging.GetClassLongPtrW;
-    }
-else
-    struct {
-        pub const SetClassLongPtrW = zigwin32.ui.windows_and_messaging.SetClassLongW;
-        pub const GetClassLongPtrW = zigwin32.ui.windows_and_messaging.GetClassLongW;
+// The zigwin32 definitions for these functions use an obnoxious *exhaustive* enum for the offset.
+// They're also completely missing the wrappers for the class storage wrappers and such.
+const clwl = struct {
+    const wrap = struct {
+        pub extern "user32" fn GetClassLongW(hwnd: HWND, offset: i32) callconv(WINAPI) u32;
+        pub extern "user32" fn GetClassLongPtrW(hWnd: HWND, offset: i32) callconv(WINAPI) usize;
+        pub extern "user32" fn SetClassLongW(hwnd: HWND, offset: i32, value: u32) callconv(WINAPI) u32;
+        pub extern "user32" fn SetClassLongPtrW(hwnd: HWND, offset: i32, value: usize) callconv(WINAPI) usize;
+        pub extern "user32" fn GetWindowLongW(hwnd: HWND, offset: i32) callconv(WINAPI) u32;
+        pub extern "user32" fn GetWindowLongPtrW(hwnd: HWND, offset: i32) callconv(WINAPI) usize;
+        pub extern "user32" fn SetWindowLongW(hwnd: HWND, offset: i32, value: u32) callconv(WINAPI) u32;
+        pub extern "user32" fn SetWindowLongPtrW(hwnd: HWND, offset: i32, value: usize) callconv(WINAPI) usize;
     };
-const SetClassLongPtrW = classlongptr.SetClassLongPtrW;
-const GetClassLongPtrW = classlongptr.GetClassLongPtrW;
+    pub const GetClassLongPtrW = if (@sizeOf(usize) == 8) wrap.GetClassLongPtrW else wrap.GetClassLongW;
+    pub const SetClassLongPtrW = if (@sizeOf(usize) == 8) wrap.SetClassLongPtrW else wrap.SetClassLongW;
+    pub const GetWindowLongPtrW = if (@sizeOf(usize) == 8) wrap.GetWindowLongPtrW else wrap.GetWindowLongW;
+    pub const SetWindowLongPtrW = if (@sizeOf(usize) == 8) wrap.SetWindowLongPtrW else wrap.SetWindowLongW;
+};
+const GetClassLongPtrW = clwl.GetClassLongPtrW;
+const SetClassLongPtrW = clwl.SetClassLongPtrW;
+const GetWindowLongPtrW = clwl.GetWindowLongPtrW;
+const SetWindowLongPtrW = clwl.SetWindowLongPtrW;
 
 /// Undocumented NTDLL function because there's genuinely no other way to do this reliably.
 /// - https://www.geoffchappell.com/studies/windows/win32/ntdll/api/ldrinit/getntversionnumbers.htm
@@ -196,7 +206,7 @@ pub const Window = struct {
             // - https://devblogs.microsoft.com/oldnewthing/20150429-00/?p=44984
             var wcex: WNDCLASSEXW = undefined;
             wcex.cbSize = @sizeOf(WNDCLASSEXW);
-            var class_atom = if (__flags.multi_window) GetClassInfoExW(imageBase(), class_name, &wcex) else @as(u16, 0);
+            var class_atom: u16 = if (__flags.multi_window) @intCast(GetClassInfoExW(imageBase(), class_name, &wcex)) else 0;
             var class_created_here = false;
             if (class_atom == 0) {
                 // we can re-use the structure needed for GetClassInfoExW to actually register the window class
@@ -248,7 +258,7 @@ pub const Window = struct {
             null,
         )) |hwnd| {
             if (__flags.multi_window) {
-                _ = SetClassLongPtrW(hwnd, GetClassLongPtrW(hwnd, 0) + 1, 0);
+                _ = SetClassLongPtrW(hwnd, 0, GetClassLongPtrW(hwnd, 0) + 1);
             }
             window.class_atom = class_atom;
             window.hwnd = hwnd;
@@ -261,13 +271,14 @@ pub const Window = struct {
     pub fn deinit(window: *Window) void {
         var unregister_class = !__flags.multi_window or global.quit_posted;
         if (__flags.multi_window and !global.quit_posted) {
-            if (SetClassLongPtrW(window.hwnd, GetClassLongPtrW(window.hwnd, 0) - 1, 0) == 0) {
+            if (SetClassLongPtrW(window.hwnd, 0, GetClassLongPtrW(window.hwnd, 0) - 1) == 0) {
                 unregister_class = true;
             }
         }
         assert(DestroyWindow(window.hwnd) != 0);
         if (unregister_class) {
             assert(UnregisterClassW(atomCast(window.class_atom), imageBase()) != 0);
+            std.debug.print("unregistering\n", .{});
         }
     }
 };
