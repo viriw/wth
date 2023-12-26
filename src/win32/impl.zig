@@ -43,7 +43,6 @@ const CW_USEDEFAULT                              = zigwin32.ui.windows_and_messa
 const DefWindowProcW                             = zigwin32.ui.windows_and_messaging.DefWindowProcW;
 const DestroyWindow                              = zigwin32.ui.windows_and_messaging.DestroyWindow;
 const DispatchMessageW                           = zigwin32.ui.windows_and_messaging.DispatchMessageW;
-const GET_CLASS_LONG_INDEX                       = zigwin32.ui.windows_and_messaging.GET_CLASS_LONG_INDEX;
 const GetClassInfoExW                            = zigwin32.ui.windows_and_messaging.GetClassInfoExW;
 const KillTimer                                  = zigwin32.ui.windows_and_messaging.KillTimer;
 const MSG                                        = zigwin32.ui.windows_and_messaging.MSG;
@@ -278,7 +277,6 @@ pub const Window = struct {
         assert(DestroyWindow(window.hwnd) != 0);
         if (unregister_class) {
             assert(UnregisterClassW(atomCast(window.class_atom), imageBase()) != 0);
-            std.debug.print("unregistering\n", .{});
         }
     }
 };
