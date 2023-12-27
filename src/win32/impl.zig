@@ -1,6 +1,5 @@
 //! Win32 implementation. The minimum version is Windows 10 1607 (Build 14393; April 2016; Redstone / "Anniversary Update").
 
-const builtin = @import("builtin");
 const root = @import("root");
 const std = @import("std");
 const wth = @import("../wth.zig");
@@ -8,7 +7,7 @@ const zigwin32 = @import("zigwin32");
 
 // replace with actual build flags at some point. hardcoding now for testing
 const __flags = struct {
-    const multi_window: bool = false;
+    const multi_window: bool = true;
     const text_input: bool = false;
     const win32_fibers: bool = true;
 };
@@ -194,7 +193,7 @@ pub const Window = struct {
         var sfa = std.heap.stackFallback(512, window.allocator);
 
         // check if the class exists, if not, register it
-        const class_atom: u16, const class_created_here: bool = blk: {
+        window.class_atom, const class_created_here: bool = blk: {
             const allocator = sfa.get();
             const class_name = try utf8ToWtf16Alloc(allocator, options.class_name);
             defer allocator.free(class_name);
@@ -233,14 +232,14 @@ pub const Window = struct {
             }
             break :blk .{ class_atom, class_created_here };
         };
-        errdefer if (class_created_here) assert(UnregisterClassW(atomCast(class_atom), imageBase()) != 0);
+        errdefer if (class_created_here) assert(UnregisterClassW(atomCast(window.class_atom), imageBase()) != 0);
 
         const allocator = sfa.get();
         const title = try utf8ToWtf16Alloc(allocator, options.title);
         defer allocator.free(title);
-        if (CreateWindowExW(
+        window.hwnd = CreateWindowExW(
             @enumFromInt(0),
-            atomCast(class_atom),
+            atomCast(window.class_atom),
             title.ptr,
             WINDOW_STYLE.initFlags(.{
                 .THICKFRAME = 1,
@@ -255,21 +254,19 @@ pub const Window = struct {
             null,
             imageBase(),
             null,
-        )) |hwnd| {
-            if (__flags.multi_window) {
-                _ = SetClassLongPtrW(hwnd, 0, GetClassLongPtrW(hwnd, 0) + 1);
-            }
-            window.class_atom = class_atom;
-            window.hwnd = hwnd;
-        } else {
+        ) orelse {
             // TODO: It can be other errors like returned from WM_{NC}CREATE (by us) and so on, of course.
             return error.SystemResources;
+        };
+
+        if (__flags.multi_window) {
+            _ = SetClassLongPtrW(window.hwnd, 0, GetClassLongPtrW(window.hwnd, 0) + 1);
         }
     }
 
     pub fn deinit(window: *Window) void {
-        var unregister_class = !__flags.multi_window or global.quit_posted;
-        if (__flags.multi_window and !global.quit_posted) {
+        var unregister_class = !__flags.multi_window;
+        if (__flags.multi_window) {
             if (SetClassLongPtrW(window.hwnd, 0, GetClassLongPtrW(window.hwnd, 0) - 1) == 0) {
                 unregister_class = true;
             }
