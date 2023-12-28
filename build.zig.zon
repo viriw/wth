@@ -1,12 +1,6 @@
 .{
     .name = "wth",
     .version = "0.0.0",
-    .dependencies = .{
-        .zigwin32 = .{
-            .url = "https://github.com/marlersoft/zigwin32/archive/6777f1db221d0cb50322842f558f03e3c3a4099f.tar.gz",
-            .hash = "1220f8d5028adceac0c6fc8ef554d82efef49ca48913393e9c2f5d73a66b58c8aaad",
-        },
-    },
     .paths = .{
         "README.md",
         "build.zig",
