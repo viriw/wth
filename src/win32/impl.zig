@@ -3,132 +3,232 @@
 const root = @import("root");
 const std = @import("std");
 const wth = @import("../wth.zig");
-const zigwin32 = @import("zigwin32");
 
-// replace with actual build flags at some point. hardcoding now for testing
+const assert = std.debug.assert;
+const WINAPI = std.os.windows.WINAPI;
+
+// TODO: replace with actual build flags at some point. hardcoding now for testing
 const __flags = struct {
     const multi_window: bool = true;
     const text_input: bool = false;
     const win32_fibers: bool = true;
 };
 
-// zig fmt: off
-const assert                                     = std.debug.assert;
-const WINAPI                                     = std.os.windows.WINAPI;
-const L                                          = std.unicode.utf8ToUtf16LeStringLiteral;
-const GetLastError                               = zigwin32.foundation.GetLastError;
-const HANDLE                                     = zigwin32.foundation.HANDLE;
-const HINSTANCE                                  = zigwin32.foundation.HINSTANCE;
-const HRESULT                                    = zigwin32.foundation.HRESULT;
-const HWND                                       = zigwin32.foundation.HWND;
-const LPARAM                                     = zigwin32.foundation.LPARAM;
-const LRESULT                                    = zigwin32.foundation.LRESULT;
-const RECT                                       = zigwin32.foundation.RECT;
-const S_OK                                       = zigwin32.foundation.S_OK;
-const WPARAM                                     = zigwin32.foundation.WPARAM;
-const HMONITOR                                   = zigwin32.graphics.gdi.HMONITOR;
-const MONITOR_DEFAULTTONULL                      = zigwin32.graphics.gdi.MONITOR_DEFAULTTONULL;
-const MonitorFromWindow                          = zigwin32.graphics.gdi.MonitorFromWindow;
-const CP_UTF8                                    = zigwin32.globalization.CP_UTF8;
-const MB_PRECOMPOSED                             = zigwin32.globalization.MB_PRECOMPOSED;
-const MultiByteToWideChar                        = zigwin32.globalization.MultiByteToWideChar;
-const IMAGE_DOS_HEADER                           = zigwin32.system.system_services.IMAGE_DOS_HEADER;
-const CreateFiber                                = zigwin32.system.threading.CreateFiber;
-const DeleteFiber                                = zigwin32.system.threading.DeleteFiber;
-const ConvertFiberToThread                       = zigwin32.system.threading.ConvertFiberToThread;
-const ConvertThreadToFiber                       = zigwin32.system.threading.ConvertThreadToFiber;
-const SwitchToFiber                              = zigwin32.system.threading.SwitchToFiber;
-const AdjustWindowRectExForDpi                   = zigwin32.ui.hi_dpi.AdjustWindowRectExForDpi;
-const EnableNonClientDpiScaling                  = zigwin32.ui.hi_dpi.EnableNonClientDpiScaling;
-const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    = zigwin32.ui.hi_dpi.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE;
-const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = zigwin32.ui.hi_dpi.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
-const MDT_EFFECTIVE_DPI                          = zigwin32.ui.hi_dpi.MDT_EFFECTIVE_DPI;
-const MONITOR_DPI_TYPE                           = zigwin32.ui.hi_dpi.MONITOR_DPI_TYPE;
-const SetThreadDpiAwarenessContext               = zigwin32.ui.hi_dpi.SetThreadDpiAwarenessContext;
-const CreateWindowExW                            = zigwin32.ui.windows_and_messaging.CreateWindowExW;
-const CW_USEDEFAULT                              = zigwin32.ui.windows_and_messaging.CW_USEDEFAULT;
-const DefWindowProcW                             = zigwin32.ui.windows_and_messaging.DefWindowProcW;
-const DestroyWindow                              = zigwin32.ui.windows_and_messaging.DestroyWindow;
-const DispatchMessageW                           = zigwin32.ui.windows_and_messaging.DispatchMessageW;
-const GetClassInfoExW                            = zigwin32.ui.windows_and_messaging.GetClassInfoExW;
-const KillTimer                                  = zigwin32.ui.windows_and_messaging.KillTimer;
-const MSG                                        = zigwin32.ui.windows_and_messaging.MSG;
-const PeekMessageW                               = zigwin32.ui.windows_and_messaging.PeekMessageW;
-const PM_REMOVE                                  = zigwin32.ui.windows_and_messaging.PM_REMOVE;
-const PostQuitMessage                            = zigwin32.ui.windows_and_messaging.PostQuitMessage;
-const RegisterClassExW                           = zigwin32.ui.windows_and_messaging.RegisterClassExW;
-const SetTimer                                   = zigwin32.ui.windows_and_messaging.SetTimer;
-const SetWindowPos                               = zigwin32.ui.windows_and_messaging.SetWindowPos;
-const ShowWindow                                 = zigwin32.ui.windows_and_messaging.ShowWindow;
-const TranslateMessage                           = zigwin32.ui.windows_and_messaging.TranslateMessage;
-const UnregisterClassW                           = zigwin32.ui.windows_and_messaging.UnregisterClassW;
-const WINDOW_STYLE                               = zigwin32.ui.windows_and_messaging.WINDOW_STYLE;
-const WM_CLOSE                                   = zigwin32.ui.windows_and_messaging.WM_CLOSE;
-const WM_DPICHANGED                              = zigwin32.ui.windows_and_messaging.WM_DPICHANGED;
-const WM_DESTROY                                 = zigwin32.ui.windows_and_messaging.WM_DESTROY;
-const WM_ENTERSIZEMOVE                           = zigwin32.ui.windows_and_messaging.WM_ENTERSIZEMOVE;
-const WM_EXITSIZEMOVE                            = zigwin32.ui.windows_and_messaging.WM_EXITSIZEMOVE;
-const WM_NCCREATE                                = zigwin32.ui.windows_and_messaging.WM_NCCREATE;
-const WM_TIMER                                   = zigwin32.ui.windows_and_messaging.WM_TIMER;
-const WM_QUIT                                    = zigwin32.ui.windows_and_messaging.WM_QUIT;
-const WNDCLASSEXW                                = zigwin32.ui.windows_and_messaging.WNDCLASSEXW;
-const FALSE                                      = zigwin32.zig.FALSE;
-// zig fmt: on
+// type definitions
+const ATOM = u16;
+const BOOL = i32;
+const HBRUSH = *opaque {};
+const HCURSOR = *opaque {};
+const HICON = *opaque {};
+const HINSTANCE = *opaque {};
+const HMENU = *opaque {};
+const HMONITOR = *opaque {};
+const HRESULT = i32;
+const HWND = *opaque {};
+const LPARAM = isize;
+const LRESULT = isize;
+const WNDPROC = *const fn (HWND, u32, WPARAM, LPARAM) callconv(WINAPI) LRESULT;
+const WPARAM = usize;
 
-// The zigwin32 definitions for these functions use an obnoxious *exhaustive* enum for the offset.
-// They're also completely missing the wrappers for the class storage wrappers and such.
-const clwl = struct {
-    const wrap = struct {
-        pub extern "user32" fn GetClassLongW(hwnd: HWND, offset: i32) callconv(WINAPI) u32;
-        pub extern "user32" fn GetClassLongPtrW(hWnd: HWND, offset: i32) callconv(WINAPI) usize;
-        pub extern "user32" fn SetClassLongW(hwnd: HWND, offset: i32, value: u32) callconv(WINAPI) u32;
-        pub extern "user32" fn SetClassLongPtrW(hwnd: HWND, offset: i32, value: usize) callconv(WINAPI) usize;
-        pub extern "user32" fn GetWindowLongW(hwnd: HWND, offset: i32) callconv(WINAPI) u32;
-        pub extern "user32" fn GetWindowLongPtrW(hwnd: HWND, offset: i32) callconv(WINAPI) usize;
-        pub extern "user32" fn SetWindowLongW(hwnd: HWND, offset: i32, value: u32) callconv(WINAPI) u32;
-        pub extern "user32" fn SetWindowLongPtrW(hwnd: HWND, offset: i32, value: usize) callconv(WINAPI) usize;
-    };
-    pub const GetClassLongPtrW = if (@sizeOf(usize) == 8) wrap.GetClassLongPtrW else wrap.GetClassLongW;
-    pub const SetClassLongPtrW = if (@sizeOf(usize) == 8) wrap.SetClassLongPtrW else wrap.SetClassLongW;
-    pub const GetWindowLongPtrW = if (@sizeOf(usize) == 8) wrap.GetWindowLongPtrW else wrap.GetWindowLongW;
-    pub const SetWindowLongPtrW = if (@sizeOf(usize) == 8) wrap.SetWindowLongPtrW else wrap.SetWindowLongW;
+// typed constants
+const CW_USEDEFAULT = @as(i32, -2147483648);
+const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE = @as(isize, -3);
+const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = @as(isize, -4);
+const FALSE = @as(BOOL, 0);
+const GWL_EXSTYLE = @as(i32, -20);
+const GWL_STYLE = @as(i32, -16);
+const MDT_EFFECTIVE_DPI = @as(i32, 0);
+const MONITOR_DEFAULTTONULL = @as(u32, 0);
+const PM_REMOVE = @as(u32, 1);
+const S_OK = @as(HRESULT, 0);
+const SWP_FRAMECHANGED = @as(u32, 32);
+const SWP_NOACTIVATE = @as(u32, 16);
+const SWP_NOMOVE = @as(u32, 2);
+const SWP_NOSENDCHANGING = @as(u32, 1024);
+const SWP_NOSIZE = @as(u32, 1);
+const SWP_NOZORDER = @as(u32, 4);
+const SWP_SHOWWINDOW = @as(u32, 64);
+const WM_CLOSE = @as(u32, 16);
+const WM_DESTROY = @as(u32, 2);
+const WM_DPICHANGED = @as(u32, 736);
+const WM_ENTERSIZEMOVE = @as(u32, 561);
+const WM_EXITSIZEMOVE = @as(u32, 562);
+const WM_NCCREATE = @as(u32, 129);
+const WM_QUIT = @as(u32, 18);
+const WM_TIMER = @as(u32, 275);
+
+// TODO: Remove the ones we don't need here. I adapted these from winapi-rs with regexes (lol).
+const WS_OVERLAPPED = @as(u32, 0x00000000);
+const WS_POPUP = @as(u32, 0x80000000);
+const WS_CHILD = @as(u32, 0x40000000);
+const WS_MINIMIZE = @as(u32, 0x20000000);
+const WS_VISIBLE = @as(u32, 0x10000000);
+const WS_DISABLED = @as(u32, 0x08000000);
+const WS_CLIPSIBLINGS = @as(u32, 0x04000000);
+const WS_CLIPCHILDREN = @as(u32, 0x02000000);
+const WS_MAXIMIZE = @as(u32, 0x01000000);
+const WS_CAPTION = @as(u32, 0x00C00000);
+const WS_BORDER = @as(u32, 0x00800000);
+const WS_DLGFRAME = @as(u32, 0x00400000);
+const WS_VSCROLL = @as(u32, 0x00200000);
+const WS_HSCROLL = @as(u32, 0x00100000);
+const WS_SYSMENU = @as(u32, 0x00080000);
+const WS_THICKFRAME = @as(u32, 0x00040000);
+const WS_GROUP = @as(u32, 0x00020000);
+const WS_TABSTOP = @as(u32, 0x00010000);
+const WS_MINIMIZEBOX = @as(u32, 0x00020000);
+const WS_MAXIMIZEBOX = @as(u32, 0x00010000);
+const WS_TILED = WS_OVERLAPPED;
+const WS_ICONIC = WS_MINIMIZE;
+const WS_SIZEBOX = WS_THICKFRAME;
+const WS_TILEDWINDOW = WS_OVERLAPPEDWINDOW;
+const WS_OVERLAPPEDWINDOW = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+const WS_POPUPWINDOW = WS_POPUP | WS_BORDER | WS_SYSMENU;
+const WS_CHILDWINDOW = WS_CHILD;
+const WS_EX_DLGMODALFRAME = @as(u32, 0x00000001);
+const WS_EX_NOPARENTNOTIFY = @as(u32, 0x00000004);
+const WS_EX_TOPMOST = @as(u32, 0x00000008);
+const WS_EX_ACCEPTFILES = @as(u32, 0x00000010);
+const WS_EX_TRANSPARENT = @as(u32, 0x00000020);
+const WS_EX_MDICHILD = @as(u32, 0x00000040);
+const WS_EX_TOOLWINDOW = @as(u32, 0x00000080);
+const WS_EX_WINDOWEDGE = @as(u32, 0x00000100);
+const WS_EX_CLIENTEDGE = @as(u32, 0x00000200);
+const WS_EX_CONTEXTHELP = @as(u32, 0x00000400);
+const WS_EX_RIGHT = @as(u32, 0x00001000);
+const WS_EX_LEFT = @as(u32, 0x00000000);
+const WS_EX_RTLREADING = @as(u32, 0x00002000);
+const WS_EX_LTRREADING = @as(u32, 0x00000000);
+const WS_EX_LEFTSCROLLBAR = @as(u32, 0x00004000);
+const WS_EX_RIGHTSCROLLBAR = @as(u32, 0x00000000);
+const WS_EX_CONTROLPARENT = @as(u32, 0x00010000);
+const WS_EX_STATICEDGE = @as(u32, 0x00020000);
+const WS_EX_APPWINDOW = @as(u32, 0x00040000);
+const WS_EX_OVERLAPPEDWINDOW = WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE;
+const WS_EX_PALETTEWINDOW = WS_EX_WINDOWEDGE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+const WS_EX_LAYERED = @as(u32, 0x00080000);
+const WS_EX_NOINHERITLAYOUT = @as(u32, 0x00100000);
+const WS_EX_NOREDIRECTIONBITMAP = @as(u32, 0x00200000);
+const WS_EX_LAYOUTRTL = @as(u32, 0x00400000);
+const WS_EX_COMPOSITED = @as(u32, 0x02000000);
+const WS_EX_NOACTIVATE = @as(u32, 0x08000000);
+
+// structure definitions
+const IMAGE_DOS_HEADER = extern struct {
+    e_magic: u16,
+    e_cblp: u16,
+    e_cp: u16,
+    e_crlc: u16,
+    e_cparhdr: u16,
+    e_minalloc: u16,
+    e_maxalloc: u16,
+    e_ss: u16,
+    e_sp: u16,
+    e_csum: u16,
+    e_ip: u16,
+    e_cs: u16,
+    e_lfarlc: u16,
+    e_ovno: u16,
+    e_res: [4]u16,
+    e_oemid: u16,
+    e_oeminfo: u16,
+    e_res2: [10]u16,
+    e_lfanew: i32,
 };
-const GetClassLongPtrW = clwl.GetClassLongPtrW;
-const SetClassLongPtrW = clwl.SetClassLongPtrW;
-const GetWindowLongPtrW = clwl.GetWindowLongPtrW;
-const SetWindowLongPtrW = clwl.SetWindowLongPtrW;
-const GWL_STYLE = -16;
-const GWL_EXSTYLE = -20;
+const MSG = extern struct {
+    hwnd: ?HWND,
+    message: u32,
+    wParam: WPARAM,
+    lParam: LPARAM,
+    time: u32,
+    pt: POINT,
+};
+const POINT = extern struct {
+    x: i32,
+    y: i32,
+};
+const RECT = extern struct {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+};
+const WNDCLASSEXW = extern struct {
+    cbSize: u32,
+    style: u32,
+    lpfnWndProc: WNDPROC,
+    cbClsExtra: i32,
+    cbWndExtra: i32,
+    hInstance: ?HINSTANCE,
+    hIcon: ?HICON,
+    hCursor: ?HCURSOR,
+    hbrBackground: ?HBRUSH,
+    lpszMenuName: ?[*:0]const u16,
+    lpszClassName: [*:0]const u16,
+    hIconSm: ?HICON,
+};
 
-// Work around for error(link): DLL import library for -lapi-ms-win-shcore-scaling-l1-1-1 not found.
-extern "shcore" fn GetDpiForMonitor(hmonitor: HMONITOR, dpiType: MONITOR_DPI_TYPE, dpiX: *u32, dpiY: *u32) HRESULT;
+// kernel32.dll imports
+extern "kernel32" fn ConvertFiberToThread() callconv(WINAPI) BOOL;
+extern "kernel32" fn ConvertThreadToFiber(lpParameter: ?*anyopaque) callconv(WINAPI) ?*anyopaque;
+extern "kernel32" fn CreateFiber(dwStackSize: usize, lpStartAddress: *const fn (?*anyopaque) callconv(WINAPI) void, lpParameter: ?*anyopaque) callconv(WINAPI) ?*anyopaque;
+extern "kernel32" fn DeleteFiber(lpFiber: *anyopaque) callconv(WINAPI) void;
+extern "kernel32" fn SwitchToFiber(lpFiber: *anyopaque) callconv(WINAPI) void;
 
-/// Undocumented NTDLL function because there's genuinely no other way to do this reliably.
-/// - https://www.geoffchappell.com/studies/windows/win32/ntdll/api/ldrinit/getntversionnumbers.htm
-/// - https://dennisbabkin.com/blog/?t=how-to-tell-the-real-version-of-windows-your-app-is-running-on
+// ntdll.dll imports
 extern "ntdll" fn RtlGetNtVersionNumbers(*u32, *u32, *u32) callconv(WINAPI) void;
+
+// shcore.dll imports
+extern "shcore" fn GetDpiForMonitor(hmonitor: HMONITOR, dpiType: i32, dpiX: *u32, dpiY: *u32) HRESULT;
+
+// user32.dll imports
+extern "user32" fn AdjustWindowRectExForDpi(lpRect: *RECT, dwStyle: u32, bMenu: BOOL, dwExStyle: u32, dpi: u32) callconv(WINAPI) BOOL;
+extern "user32" fn CreateWindowExW(dwExStyle: u32, lpClassName: [*:0]const u16, lpWindowName: [*:0]const u16, dwStyle: u32, X: i32, Y: i32, nWidth: i32, nHeight: i32, hWndParent: ?HWND, hMenu: ?HMENU, hInstance: HINSTANCE, lpParam: ?*anyopaque) callconv(WINAPI) ?HWND;
+extern "user32" fn DefWindowProcW(hWnd: HWND, Msg: u32, wParam: WPARAM, lParam: LPARAM) callconv(WINAPI) LRESULT;
+extern "user32" fn DestroyWindow(hWnd: HWND) callconv(WINAPI) BOOL;
+extern "user32" fn DispatchMessageW(lpMsg: *const MSG) callconv(WINAPI) LRESULT;
+extern "user32" fn EnableNonClientDpiScaling(hwnd: HWND) callconv(WINAPI) BOOL;
+extern "user32" fn GetClassInfoExW(hInstance: HINSTANCE, lpszClass: [*:0]const u16, lpwcx: *WNDCLASSEXW) callconv(WINAPI) BOOL;
+extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: usize) callconv(WINAPI) BOOL;
+extern "user32" fn MonitorFromWindow(hwnd: HWND, dwFlags: u32) callconv(WINAPI) ?HMONITOR;
+extern "user32" fn PeekMessageW(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: u32, wMsgFilterMax: u32, wRemoveMsg: u32) callconv(WINAPI) BOOL;
+extern "user32" fn PostQuitMessage(nExitCode: i32) callconv(WINAPI) void; // TODO: remove this
+extern "user32" fn RegisterClassExW(unnamedParam1: *const WNDCLASSEXW) callconv(WINAPI) ATOM;
+extern "user32" fn SetThreadDpiAwarenessContext(dpiContext: isize) callconv(WINAPI) isize;
+extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: usize, uElapse: u32, lpTimerFunc: ?*anyopaque) callconv(WINAPI) usize;
+extern "user32" fn SetWindowPos(hWnd: HWND, hWndInsertAfter: ?HWND, X: i32, Y: i32, cx: i32, cy: i32, uFlags: u32) callconv(WINAPI) BOOL;
+extern "user32" fn TranslateMessage(lpMsg: *const MSG) callconv(WINAPI) BOOL;
+extern "user32" fn UnregisterClassW(lpClassName: [*:0]const u16, hInstance: HINSTANCE) callconv(WINAPI) BOOL;
+
+// Wrapper for the API set that manipulates window class and instance storage.
+//
+// History lesson: Classic WINAPI, you have SetClassLongW and friends, taking LONG, a 32-bit type definition.
+// When Microsoft upgraded from 32 to 64 bit, they realised pointers needed to fit into these integers sometimes.
+// They added a new set of functions, SetClassLongPtrW and so on, taking LONG_PTR, but only defined it for 64-bit.
+// Their solution for using those functions on 32-bit was to fucking #define SetClassLongPtrW SetClassLongW.
+// However, the signatures are incompatible. So they need to be fixed in practically every language binding.
+// It's also the case that SetClassLongPtrW takes a LONG_PTR but the "old value" is a ULONG_PTR. We ignore this.
+const user32_extra = struct {
+    // supplementary user32.dll imports
+    pub extern "user32" fn GetClassLongPtrW(hWnd: HWND, nIndex: i32) callconv(WINAPI) usize;
+    pub extern "user32" fn GetClassLongW(hWnd: HWND, nIndex: i32) callconv(WINAPI) u32;
+    pub extern "user32" fn GetWindowLongPtrW(hWnd: HWND, nIndex: i32) callconv(WINAPI) usize;
+    pub extern "user32" fn GetWindowLongW(hWnd: HWND, nIndex: i32) callconv(WINAPI) u32;
+    pub extern "user32" fn SetClassLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: usize) callconv(WINAPI) usize;
+    pub extern "user32" fn SetClassLongW(hWnd: HWND, nIndex: i32, dwNewLong: u32) callconv(WINAPI) u32;
+    pub extern "user32" fn SetWindowLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: usize) callconv(WINAPI) usize;
+    pub extern "user32" fn SetWindowLongW(hWnd: HWND, nIndex: i32, dwNewLong: u32) callconv(WINAPI) u32;
+};
+pub const GetClassLongPtrW = if (@sizeOf(*anyopaque) == 8) user32_extra.GetClassLongPtrW else user32_extra.GetClassLongW;
+pub const GetWindowLongPtrW = if (@sizeOf(*anyopaque) == 8) user32_extra.GetWindowLongPtrW else user32_extra.GetWindowLongW;
+pub const SetClassLongPtrW = if (@sizeOf(*anyopaque) == 8) user32_extra.SetClassLongPtrW else user32_extra.SetClassLongW;
+pub const SetWindowLongPtrW = if (@sizeOf(*anyopaque) == 8) user32_extra.SetWindowLongPtrW else user32_extra.SetWindowLongW;
 
 /// Current module's HINSTANCE exposed through a Microsoft linker pseudo-variable.
 /// - https://devblogs.microsoft.com/oldnewthing/20041025-00/?p=37483
 extern const __ImageBase: IMAGE_DOS_HEADER;
 inline fn imageBase() HINSTANCE {
     return @ptrCast(&__ImageBase);
-}
-
-fn utf8ToWtf16Alloc(
-    allocator: std.mem.Allocator,
-    utf8: []const u8,
-) std.mem.Allocator.Error![:0]const u16 {
-    // TODO: if safe mode validate the utf8
-    if (utf8.len == 0) {
-        return &.{};
-    }
-    const wstr_len = MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, utf8.ptr, @intCast(utf8.len), null, 0);
-    const wstr_alloc = try allocator.allocSentinel(u16, @intCast(wstr_len), 0);
-    errdefer allocator.free(wstr_alloc);
-    _ = MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, utf8.ptr, @intCast(utf8.len), wstr_alloc.ptr, wstr_len);
-    wstr_alloc[@intCast(wstr_len)] = 0; // write sentinel
-    return wstr_alloc;
 }
 
 const global = struct {
@@ -203,7 +303,7 @@ pub inline fn sync() wth.SyncError!void {
 
 pub const Window = struct {
     allocator: std.mem.Allocator,
-    class_atom: u16,
+    class_atom: ATOM,
     dpi: u32,
     hwnd: HWND,
 
@@ -213,7 +313,7 @@ pub const Window = struct {
         // check if the class exists, if not, register it
         window.class_atom, const class_created_here: bool = blk: {
             const allocator = sfa.get();
-            const class_name = try utf8ToWtf16Alloc(allocator, options.class_name);
+            const class_name = try utf8ToUtf16LeWithNullAssumeValid(allocator, options.title);
             defer allocator.free(class_name);
 
             // undocumented win32 tidbit: GetClassInfo** returns the class atom to act as the BOOL here
@@ -222,13 +322,13 @@ pub const Window = struct {
             // - https://devblogs.microsoft.com/oldnewthing/20150429-00/?p=44984
             var wcex: WNDCLASSEXW = undefined;
             wcex.cbSize = @sizeOf(WNDCLASSEXW);
-            var class_atom: u16 = if (__flags.multi_window) @intCast(GetClassInfoExW(imageBase(), class_name, &wcex)) else 0;
+            var class_atom: ATOM = if (__flags.multi_window) @intCast(GetClassInfoExW(imageBase(), class_name, &wcex)) else 0;
             var class_created_here = false;
             if (class_atom == 0) {
                 // we can re-use the structure needed for GetClassInfoExW to actually register the window class
                 wcex = .{
                     .cbSize = @sizeOf(WNDCLASSEXW),
-                    .style = @enumFromInt(0),
+                    .style = 0,
                     .lpfnWndProc = windowProc,
                     .cbClsExtra = if (__flags.multi_window) @sizeOf(usize) else 0,
                     .cbWndExtra = 0,
@@ -253,13 +353,13 @@ pub const Window = struct {
         errdefer if (class_created_here) assert(UnregisterClassW(atomCast(window.class_atom), imageBase()) != 0);
 
         const allocator = sfa.get();
-        const title = try utf8ToWtf16Alloc(allocator, options.title);
+        const title = try utf8ToUtf16LeWithNullAssumeValid(allocator, options.title);
         defer allocator.free(title);
         window.hwnd = CreateWindowExW(
-            @enumFromInt(0),
+            0,
             atomCast(window.class_atom),
             title.ptr,
-            WINDOW_STYLE.initFlags(.{ .POPUP = 1 }),
+            WS_POPUP,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             0,
@@ -281,12 +381,11 @@ pub const Window = struct {
             std.debug.print("DPI from Monitor: {}\n", .{xdpi});
         }
 
-        var width: u32, var height: u32 = adjustWindowRect(window.dpi, WINDOW_STYLE.initFlags(.{ .VISIBLE = 1, .THICKFRAME = 1, .CAPTION = 1, .SYSMENU = 1 }));
+        var width: u32, var height: u32 = adjustWindowRect(window.dpi, WS_OVERLAPPEDWINDOW);
         width += 800;
         height += 608;
-        _ = SetWindowLongPtrW(window.hwnd, GWL_STYLE, @intFromEnum(WINDOW_STYLE.initFlags(.{ .VISIBLE = 1, .THICKFRAME = 1, .CAPTION = 1, .SYSMENU = 1 })));
-        assert(SetWindowPos(window.hwnd, null, 0, 0, @intCast(width), @intCast(height), .SHOWWINDOW) != 0);
-        assert(ShowWindow(window.hwnd, .SHOW) != 0);
+        _ = SetWindowLongPtrW(window.hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
+        assert(SetWindowPos(window.hwnd, null, 0, 0, @intCast(width), @intCast(height), SWP_FRAMECHANGED | SWP_NOMOVE | SWP_SHOWWINDOW) != 0);
 
         if (__flags.multi_window) {
             _ = SetClassLongPtrW(window.hwnd, 0, GetClassLongPtrW(window.hwnd, 0) + 1);
@@ -307,15 +406,22 @@ pub const Window = struct {
     }
 };
 
-fn adjustWindowRect(dpi: u32, style: WINDOW_STYLE) struct { u32, u32 } {
+fn adjustWindowRect(dpi: u32, style: u32) struct { u32, u32 } {
     var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
-    assert(AdjustWindowRectExForDpi(&rect, style, FALSE, @enumFromInt(0), dpi) != 0);
+    assert(AdjustWindowRectExForDpi(&rect, style, FALSE, 0, dpi) != 0);
     return .{ @intCast(-rect.left + rect.right), @intCast(-rect.top + rect.bottom) };
 }
 
-inline fn atomCast(atom: u16) [*:0]const u16 {
+inline fn atomCast(atom: ATOM) [*:0]const u16 {
     @setRuntimeSafety(false);
     return @ptrFromInt(atom);
+}
+
+inline fn utf8ToUtf16LeWithNullAssumeValid(allocator: std.mem.Allocator, utf8: []const u8) std.mem.Allocator.Error![:0]u16 {
+    return std.unicode.utf8ToUtf16LeWithNull(allocator, utf8) catch |err| switch (err) {
+        error.InvalidUtf8 => unreachable,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
 }
 
 fn drainMessageQueue() void {
