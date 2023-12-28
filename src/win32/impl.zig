@@ -19,10 +19,16 @@ const L                                          = std.unicode.utf8ToUtf16LeStri
 const GetLastError                               = zigwin32.foundation.GetLastError;
 const HANDLE                                     = zigwin32.foundation.HANDLE;
 const HINSTANCE                                  = zigwin32.foundation.HINSTANCE;
+const HRESULT                                    = zigwin32.foundation.HRESULT;
 const HWND                                       = zigwin32.foundation.HWND;
 const LPARAM                                     = zigwin32.foundation.LPARAM;
 const LRESULT                                    = zigwin32.foundation.LRESULT;
+const RECT                                       = zigwin32.foundation.RECT;
+const S_OK                                       = zigwin32.foundation.S_OK;
 const WPARAM                                     = zigwin32.foundation.WPARAM;
+const HMONITOR                                   = zigwin32.graphics.gdi.HMONITOR;
+const MONITOR_DEFAULTTONULL                      = zigwin32.graphics.gdi.MONITOR_DEFAULTTONULL;
+const MonitorFromWindow                          = zigwin32.graphics.gdi.MonitorFromWindow;
 const CP_UTF8                                    = zigwin32.globalization.CP_UTF8;
 const MB_PRECOMPOSED                             = zigwin32.globalization.MB_PRECOMPOSED;
 const MultiByteToWideChar                        = zigwin32.globalization.MultiByteToWideChar;
@@ -36,6 +42,8 @@ const AdjustWindowRectExForDpi                   = zigwin32.ui.hi_dpi.AdjustWind
 const EnableNonClientDpiScaling                  = zigwin32.ui.hi_dpi.EnableNonClientDpiScaling;
 const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    = zigwin32.ui.hi_dpi.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE;
 const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = zigwin32.ui.hi_dpi.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
+const MDT_EFFECTIVE_DPI                          = zigwin32.ui.hi_dpi.MDT_EFFECTIVE_DPI;
+const MONITOR_DPI_TYPE                           = zigwin32.ui.hi_dpi.MONITOR_DPI_TYPE;
 const SetThreadDpiAwarenessContext               = zigwin32.ui.hi_dpi.SetThreadDpiAwarenessContext;
 const CreateWindowExW                            = zigwin32.ui.windows_and_messaging.CreateWindowExW;
 const CW_USEDEFAULT                              = zigwin32.ui.windows_and_messaging.CW_USEDEFAULT;
@@ -50,10 +58,13 @@ const PM_REMOVE                                  = zigwin32.ui.windows_and_messa
 const PostQuitMessage                            = zigwin32.ui.windows_and_messaging.PostQuitMessage;
 const RegisterClassExW                           = zigwin32.ui.windows_and_messaging.RegisterClassExW;
 const SetTimer                                   = zigwin32.ui.windows_and_messaging.SetTimer;
+const SetWindowPos                               = zigwin32.ui.windows_and_messaging.SetWindowPos;
+const ShowWindow                                 = zigwin32.ui.windows_and_messaging.ShowWindow;
 const TranslateMessage                           = zigwin32.ui.windows_and_messaging.TranslateMessage;
 const UnregisterClassW                           = zigwin32.ui.windows_and_messaging.UnregisterClassW;
 const WINDOW_STYLE                               = zigwin32.ui.windows_and_messaging.WINDOW_STYLE;
 const WM_CLOSE                                   = zigwin32.ui.windows_and_messaging.WM_CLOSE;
+const WM_DPICHANGED                              = zigwin32.ui.windows_and_messaging.WM_DPICHANGED;
 const WM_DESTROY                                 = zigwin32.ui.windows_and_messaging.WM_DESTROY;
 const WM_ENTERSIZEMOVE                           = zigwin32.ui.windows_and_messaging.WM_ENTERSIZEMOVE;
 const WM_EXITSIZEMOVE                            = zigwin32.ui.windows_and_messaging.WM_EXITSIZEMOVE;
@@ -61,6 +72,7 @@ const WM_NCCREATE                                = zigwin32.ui.windows_and_messa
 const WM_TIMER                                   = zigwin32.ui.windows_and_messaging.WM_TIMER;
 const WM_QUIT                                    = zigwin32.ui.windows_and_messaging.WM_QUIT;
 const WNDCLASSEXW                                = zigwin32.ui.windows_and_messaging.WNDCLASSEXW;
+const FALSE                                      = zigwin32.zig.FALSE;
 // zig fmt: on
 
 // The zigwin32 definitions for these functions use an obnoxious *exhaustive* enum for the offset.
@@ -85,6 +97,11 @@ const GetClassLongPtrW = clwl.GetClassLongPtrW;
 const SetClassLongPtrW = clwl.SetClassLongPtrW;
 const GetWindowLongPtrW = clwl.GetWindowLongPtrW;
 const SetWindowLongPtrW = clwl.SetWindowLongPtrW;
+const GWL_STYLE = -16;
+const GWL_EXSTYLE = -20;
+
+// Work around for error(link): DLL import library for -lapi-ms-win-shcore-scaling-l1-1-1 not found.
+extern "shcore" fn GetDpiForMonitor(hmonitor: HMONITOR, dpiType: MONITOR_DPI_TYPE, dpiX: *u32, dpiY: *u32) HRESULT;
 
 /// Undocumented NTDLL function because there's genuinely no other way to do this reliably.
 /// - https://www.geoffchappell.com/studies/windows/win32/ntdll/api/ldrinit/getntversionnumbers.htm
@@ -187,6 +204,7 @@ pub inline fn sync() wth.SyncError!void {
 pub const Window = struct {
     allocator: std.mem.Allocator,
     class_atom: u16,
+    dpi: u32,
     hwnd: HWND,
 
     pub fn emplace(window: *Window, options: wth.Window.CreateOptions) wth.Window.CreateError!void {
@@ -241,15 +259,11 @@ pub const Window = struct {
             @enumFromInt(0),
             atomCast(window.class_atom),
             title.ptr,
-            WINDOW_STYLE.initFlags(.{
-                .THICKFRAME = 1,
-                .SYSMENU = 1,
-                .VISIBLE = 1,
-            }),
+            WINDOW_STYLE.initFlags(.{ .POPUP = 1 }),
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            800,
-            608,
+            0,
+            0,
             null,
             null,
             imageBase(),
@@ -258,6 +272,21 @@ pub const Window = struct {
             // TODO: It can be other errors like returned from WM_{NC}CREATE (by us) and so on, of course.
             return error.SystemResources;
         };
+
+        window.dpi = 96;
+        if (MonitorFromWindow(window.hwnd, MONITOR_DEFAULTTONULL)) |monitor| {
+            var xdpi: u32, var ydpi: u32 = .{ undefined, undefined };
+            assert(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) == S_OK);
+            window.dpi = xdpi;
+            std.debug.print("DPI from Monitor: {}\n", .{xdpi});
+        }
+
+        var width: u32, var height: u32 = adjustWindowRect(window.dpi, WINDOW_STYLE.initFlags(.{ .VISIBLE = 1, .THICKFRAME = 1, .CAPTION = 1, .SYSMENU = 1 }));
+        width += 800;
+        height += 608;
+        _ = SetWindowLongPtrW(window.hwnd, GWL_STYLE, @intFromEnum(WINDOW_STYLE.initFlags(.{ .VISIBLE = 1, .THICKFRAME = 1, .CAPTION = 1, .SYSMENU = 1 })));
+        assert(SetWindowPos(window.hwnd, null, 0, 0, @intCast(width), @intCast(height), .SHOWWINDOW) != 0);
+        assert(ShowWindow(window.hwnd, .SHOW) != 0);
 
         if (__flags.multi_window) {
             _ = SetClassLongPtrW(window.hwnd, 0, GetClassLongPtrW(window.hwnd, 0) + 1);
@@ -277,6 +306,12 @@ pub const Window = struct {
         }
     }
 };
+
+fn adjustWindowRect(dpi: u32, style: WINDOW_STYLE) struct { u32, u32 } {
+    var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
+    assert(AdjustWindowRectExForDpi(&rect, style, FALSE, @enumFromInt(0), dpi) != 0);
+    return .{ @intCast(-rect.left + rect.right), @intCast(-rect.top + rect.bottom) };
+}
 
 inline fn atomCast(atom: u16) [*:0]const u16 {
     @setRuntimeSafety(false);
@@ -329,6 +364,13 @@ fn windowProc(
                 assert(EnableNonClientDpiScaling(hwnd) != 0);
             }
             return DefWindowProcW(hwnd, message, wparam, lparam);
+        },
+
+        WM_DPICHANGED => {
+            const new_dpi: u16 = @truncate(wparam);
+            const rect_suggestion: *const RECT = @ptrFromInt(@as(usize, @bitCast(lparam)));
+            std.debug.print("DPI CHANGE!\n  -> New DPI: {}\n  -> Rect Suggestion: {}\n", .{ new_dpi, rect_suggestion });
+            return 0;
         },
 
         WM_ENTERSIZEMOVE => {

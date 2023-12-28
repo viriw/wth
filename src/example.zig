@@ -13,7 +13,7 @@ pub fn main() !void {
     defer window.destroy();
 
     while (true) {
-        std.debug.print("sync! {}\n", .{std.time.nanoTimestamp()});
+        //std.debug.print("sync! {}\n", .{std.time.nanoTimestamp()});
         try wth.sync();
     }
 }
