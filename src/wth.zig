@@ -29,6 +29,7 @@ pub const Window = struct {
     pub const CreateError = error{SystemResources} || std.mem.Allocator.Error;
     pub const CreateOptions = struct {
         class_name: []const u8 = "wth",
+        size: [2]u15 = .{ 800, 608 },
         title: []const u8 = "a nice window",
     };
 
