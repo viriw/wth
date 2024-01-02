@@ -483,10 +483,10 @@ pub const Window = struct {
         }
     }
 
-    pub const Tag = HWND;
+    pub const Tag = u32;
 
     pub inline fn tag(window: *Window) wth.Window.Tag {
-        return .{ .impl = window.hwnd };
+        return windowTagFromHwnd(window.hwnd);
     }
 
     fn adjustWindowRect(window: *const Window) struct { i32, i32 } {
@@ -562,7 +562,7 @@ inline fn windowFromHwnd(hwnd: HWND) *Window {
 
 inline fn windowTagFromHwnd(hwnd: HWND) wth.Window.Tag {
     // HWNDs are allocated in 32-bit range for WoW64 IPC compatibility, etc, so this is safe
-    return if (__flags.multi_window) .{ .impl = hwnd } else void{};
+    return if (__flags.multi_window) .{ .impl = @truncate(@intFromPtr(hwnd)) } else void{};
 }
 
 // -- windowproc and friends --
