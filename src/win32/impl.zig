@@ -39,9 +39,16 @@ const GWL_EXSTYLE = @as(i32, -20);
 const GWL_STYLE = @as(i32, -16);
 const GWL_USERDATA = @as(i32, -21);
 const MDT_EFFECTIVE_DPI = @as(i32, 0);
+const MF_BYCOMMAND = @as(u32, 0);
+const MF_DISABLED = @as(u32, 2);
+const MF_ENABLED = @as(u32, 0);
+const MF_GRAYED = @as(u32, 1);
 const MONITOR_DEFAULTTOPRIMARY = @as(u32, 1);
 const PM_REMOVE = @as(u32, 1);
 const S_OK = @as(HRESULT, 0);
+const SC_CLOSE = @as(u32, 0xF060);
+const SW_HIDE = 0;
+const SW_SHOW = 5;
 const SWP_FRAMECHANGED = @as(u32, 32);
 const SWP_NOACTIVATE = @as(u32, 16);
 const SWP_NOMOVE = @as(u32, 2);
@@ -202,16 +209,20 @@ extern "user32" fn CreateWindowExW(dwExStyle: u32, lpClassName: [*:0]const u16, 
 extern "user32" fn DefWindowProcW(hWnd: HWND, Msg: u32, wParam: WPARAM, lParam: LPARAM) callconv(WINAPI) LRESULT;
 extern "user32" fn DestroyWindow(hWnd: HWND) callconv(WINAPI) BOOL;
 extern "user32" fn DispatchMessageW(lpMsg: *const MSG) callconv(WINAPI) LRESULT;
+extern "user32" fn EnableMenuItem(hMenu: HMENU, uIDEnableItem: u32, uEnable: u32) callconv(WINAPI) BOOL;
 extern "user32" fn EnableNonClientDpiScaling(hwnd: HWND) callconv(WINAPI) BOOL;
 extern "user32" fn GetClassInfoExW(hInstance: HINSTANCE, lpszClass: [*:0]const u16, lpwcx: *WNDCLASSEXW) callconv(WINAPI) BOOL;
+extern "user32" fn GetSystemMenu(hWnd: HWND, bRevert: BOOL) callconv(WINAPI) ?HMENU;
 extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: usize) callconv(WINAPI) BOOL;
 extern "user32" fn MonitorFromPoint(pt: POINT, dwFlags: u32) callconv(WINAPI) ?HMONITOR;
+extern "user32" fn MonitorFromWindow(hwnd: HWND, dwFlags: u32) ?HMONITOR;
 extern "user32" fn PeekMessageW(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: u32, wMsgFilterMax: u32, wRemoveMsg: u32) callconv(WINAPI) BOOL;
 extern "user32" fn PostQuitMessage(nExitCode: i32) callconv(WINAPI) void; // TODO: remove this
 extern "user32" fn RegisterClassExW(unnamedParam1: *const WNDCLASSEXW) callconv(WINAPI) ATOM;
 extern "user32" fn SetThreadDpiAwarenessContext(dpiContext: isize) callconv(WINAPI) isize;
 extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: usize, uElapse: u32, lpTimerFunc: ?*anyopaque) callconv(WINAPI) usize;
 extern "user32" fn SetWindowPos(hWnd: HWND, hWndInsertAfter: ?HWND, X: i32, Y: i32, cx: i32, cy: i32, uFlags: u32) callconv(WINAPI) BOOL;
+extern "user32" fn ShowWindow(hWnd: HWND, nCmdShow: i32) callconv(WINAPI) BOOL;
 extern "user32" fn TranslateMessage(lpMsg: *const MSG) callconv(WINAPI) BOOL;
 extern "user32" fn UnregisterClassW(lpClassName: [*:0]const u16, hInstance: HINSTANCE) callconv(WINAPI) BOOL;
 
@@ -324,20 +335,31 @@ pub const Window = struct {
     class_atom: ATOM,
     dpi: u32,
     hwnd: HWND,
+
+    controls: wth.WindowControls,
     size: [2]u15,
 
-    pub fn emplace(window: *Window, options: wth.Window.CreateOptions) wth.Window.CreateError!void {
-        var sfa = std.heap.stackFallback(512, window.allocator);
+    ex_style: u32,
+    style: u32,
+
+    pub fn emplace(
+        window: *Window,
+        allocator: std.mem.Allocator,
+        options: wth.Window.CreateOptions,
+    ) wth.Window.CreateError!void {
+        window.allocator = allocator;
 
         if (!__flags.multi_window) {
             global.window = window;
         }
 
-        // check if the class exists, if not, register it
+        var sf = std.heap.stackFallback(1024, window.allocator);
+        var sfa = sf.get();
+
+        // check if the window class exists, if not, register it
         window.class_atom, const class_created_here: bool = blk: {
-            const allocator = sfa.get();
-            const class_name = try utf8ToUtf16LeWithNullAssumeValid(allocator, options.title);
-            defer allocator.free(class_name);
+            const class_name = try utf8ToUtf16LeWithNullAssumeValid(sfa, options.title);
+            defer sfa.free(class_name);
 
             // undocumented win32 tidbit: GetClassInfo** returns the class atom to act as the BOOL here
             // this is the only way to actually look up a class by its name as the atom table is private
@@ -353,6 +375,7 @@ pub const Window = struct {
                     .cbSize = @sizeOf(WNDCLASSEXW),
                     .style = 0,
                     .lpfnWndProc = windowProc,
+                    // store a window class reference count in its structure's tail allocation
                     .cbClsExtra = if (__flags.multi_window) @sizeOf(usize) else 0,
                     .cbWndExtra = 0,
                     .hInstance = imageBase(),
@@ -375,23 +398,22 @@ pub const Window = struct {
         };
         errdefer if (class_created_here) assert(UnregisterClassW(atomCast(window.class_atom), imageBase()) != 0);
 
-        const monitor = MonitorFromPoint(.{ .x = 0, .y = 0 }, MONITOR_DEFAULTTOPRIMARY).?;
-        window.dpi = dpi: {
-            var xdpi: u32, var ydpi: u32 = .{ undefined, undefined };
-            assert(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) == S_OK);
-            break :dpi xdpi;
-        };
+        window.dpi = monitorDpi(MonitorFromPoint(.{ .x = 0, .y = 0 }, MONITOR_DEFAULTTOPRIMARY).?);
+        window.size = options.size;
 
-        const width, const height = adjustWindowRect(window.dpi, WS_OVERLAPPEDWINDOW, 0, options.size);
+        // caches style, ex_style
+        window.controls = options.controls;
+        window.recalculateWindowStyle();
 
-        const allocator = sfa.get();
-        const title = try utf8ToUtf16LeWithNullAssumeValid(allocator, options.title);
-        defer allocator.free(title);
+        sfa = sf.get(); // reset
+        const title = try utf8ToUtf16LeWithNullAssumeValid(sfa, options.title);
+        defer sfa.free(title);
+        var width, var height = window.adjustWindowRectAddSize();
         window.hwnd = CreateWindowExW(
-            0,
+            window.ex_style,
             atomCast(window.class_atom),
             title.ptr,
-            (WS_OVERLAPPEDWINDOW | WS_VISIBLE) & ~WS_THICKFRAME,
+            window.style,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             width,
@@ -405,12 +427,27 @@ pub const Window = struct {
             return error.SystemResources;
         };
 
-        window.size = options.size;
+        // needs an active hwnd to set this
+        window.refreshCloseButton();
+
+        // belt and suspenders: let's get the default monitor (again)
+        // on my machine CW_USEDEFAULT always goes to the primary, but...
+        {
+            const dpi = monitorDpi(MonitorFromWindow(window.hwnd, MONITOR_DEFAULTTOPRIMARY).?);
+            if (dpi != window.dpi) {
+                window.dpi = dpi;
+                width, height = window.adjustWindowRectAddSize();
+                assert(SetWindowPos(window.hwnd, null, 0, 0, width, height, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER) != 0);
+            }
+        }
 
         // increment window class reference count
         if (__flags.multi_window) {
             _ = SetClassLongPtrW(window.hwnd, 0, GetClassLongPtrW(window.hwnd, 0) + 1);
         }
+
+        // ready to go! (do this at the end)
+        assert(ShowWindow(window.hwnd, SW_SHOW) == 0);
     }
 
     pub fn deinit(window: *Window) void {
@@ -430,13 +467,44 @@ pub const Window = struct {
             assert(UnregisterClassW(atomCast(window.class_atom), imageBase()) != 0);
         }
     }
-};
 
-fn adjustWindowRect(dpi: u32, style: u32, ex_style: u32, size: [2]u15) struct { i32, i32 } {
-    var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
-    assert(AdjustWindowRectExForDpi(&rect, style, FALSE, ex_style, dpi) != 0);
-    return .{ size[0] + -rect.left + rect.right, size[1] + -rect.top + rect.bottom };
-}
+    fn adjustWindowRect(window: *const Window) struct { i32, i32 } {
+        var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
+        assert(AdjustWindowRectExForDpi(&rect, window.style, FALSE, window.ex_style, window.dpi) != 0);
+        return .{ -rect.left + rect.right, -rect.top + rect.bottom };
+    }
+
+    fn adjustWindowRectAddSize(window: *const Window) struct { i32, i32 } {
+        const width, const height = window.size;
+        const addw, const addh = window.adjustWindowRect();
+        return .{ width + addw, height + addh };
+    }
+
+    fn recalculateWindowStyle(window: *Window) void {
+        window.style = WS_OVERLAPPED;
+        window.ex_style = 0;
+        if (window.controls.border) {
+            window.style |= WS_CAPTION | WS_SYSMENU;
+        } else {
+            window.style |= WS_POPUP;
+        }
+        if (window.controls.minimize) {
+            window.style |= WS_MINIMIZEBOX;
+        }
+        if (window.controls.maximize) {
+            window.style |= WS_MAXIMIZEBOX;
+        }
+        if (window.controls.resize) {
+            window.style |= WS_THICKFRAME;
+        }
+    }
+
+    fn refreshCloseButton(window: *const Window) void {
+        if (!window.controls.border) return;
+        const state = if (window.controls.close) MF_ENABLED else MF_DISABLED | MF_GRAYED;
+        _ = EnableMenuItem(GetSystemMenu(window.hwnd, FALSE).?, SC_CLOSE, MF_BYCOMMAND | param);
+    }
+};
 
 inline fn atomCast(atom: ATOM) [*:0]const u16 {
     @setRuntimeSafety(false);
@@ -449,6 +517,12 @@ inline fn hwndToWindow(hwnd: HWND) *Window {
     } else {
         return global.window;
     }
+}
+
+fn monitorDpi(hmonitor: HMONITOR) u32 {
+    var xdpi: u32, var ydpi: u32 = .{ undefined, undefined };
+    assert(GetDpiForMonitor(hmonitor, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) == S_OK);
+    return xdpi;
 }
 
 inline fn utf8ToUtf16LeWithNullAssumeValid(allocator: std.mem.Allocator, utf8: []const u8) std.mem.Allocator.Error![:0]u16 {
@@ -516,9 +590,17 @@ fn windowProc(
         WM_DPICHANGED => {
             const window = hwndToWindow(hwnd);
             window.dpi = @truncate(wparam & 0xFFFF); // LOWORD is X DPI
-            const suggestion: *const RECT = @ptrFromInt(@as(usize, @bitCast(lparam)));
-            const width, const height = adjustWindowRect(window.dpi, ((WS_OVERLAPPEDWINDOW | WS_VISIBLE) & ~WS_THICKFRAME), 0, window.size);
-            assert(SetWindowPos(window.hwnd, null, suggestion.left, suggestion.top, width, height, SWP_NOACTIVATE | SWP_NOZORDER) != 0);
+            const width, const height = window.adjustWindowRectAddSize();
+            const suggestion_rect: *const RECT = @ptrFromInt(@as(usize, @bitCast(lparam)));
+            assert(SetWindowPos(
+                window.hwnd,
+                null,
+                suggestion_rect.left,
+                suggestion_rect.top,
+                width,
+                height,
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            ) != 0);
             return 0;
         },
 
