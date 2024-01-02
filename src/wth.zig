@@ -51,17 +51,7 @@ pub const Window = struct {
         title: []const u8 = "a nice window",
     };
     pub const Coordinate = u15;
-    pub const Tag = struct {
-        impl: if (__flags.multi_window) impl.Window.Tag else void,
-
-        pub fn format(_: Tag, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-            try writer.writeAll("(opaque)");
-        }
-
-        pub fn equal(value: Tag, other_tag: Tag) bool {
-            return value.impl.equal(other_tag.impl);
-        }
-    };
+    pub const Tag = if (__flags.multi_window) u32 else void;
 
     pub fn create(options: CreateOptions) CreateError!*Window {
         const allocator = impl.getAllocator();
