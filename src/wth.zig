@@ -28,6 +28,7 @@ pub const Window = struct {
 
     pub const CreateError = error{SystemResources} || std.mem.Allocator.Error;
     pub const CreateOptions = struct {
+        controls: WindowControls = .{},
         class_name: []const u8 = "wth",
         size: [2]u15 = .{ 800, 608 },
         title: []const u8 = "a nice window",
@@ -36,8 +37,7 @@ pub const Window = struct {
     pub fn create(allocator: std.mem.Allocator, options: CreateOptions) CreateError!*Window {
         const window = try allocator.create(Window);
         errdefer allocator.destroy(window);
-        window.impl.allocator = allocator;
-        try window.impl.emplace(options);
+        try window.impl.emplace(allocator, options);
         return window;
     }
 
@@ -46,4 +46,12 @@ pub const Window = struct {
         defer allocator.destroy(window);
         window.impl.deinit();
     }
+};
+
+pub const WindowControls = packed struct {
+    border: bool = true,
+    close: bool = true,
+    minimize: bool = true,
+    maximize: bool = true,
+    resize: bool = true,
 };
