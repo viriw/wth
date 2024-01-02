@@ -8,11 +8,7 @@ const assert = std.debug.assert;
 const WINAPI = std.os.windows.WINAPI;
 
 // TODO: replace with actual build flags at some point. hardcoding now for testing
-const __flags = struct {
-    const multi_window: bool = true;
-    const text_input: bool = false;
-    const win32_fibers: bool = true;
-};
+const __flags = @import("../__flags.zig");
 
 // type definitions
 const ATOM = u16;
@@ -64,6 +60,7 @@ const WM_EXITSIZEMOVE = @as(u32, 562);
 const WM_NCCREATE = @as(u32, 129);
 const WM_QUIT = @as(u32, 18);
 const WM_TIMER = @as(u32, 275);
+const WM_MOUSEMOVE = @as(u32, 512);
 
 // TODO: Remove the ones we don't need here. I adapted these from winapi-rs with regexes (lol).
 const WS_OVERLAPPED = @as(u32, 0x00000000);
@@ -258,12 +255,16 @@ inline fn imageBase() HINSTANCE {
 }
 
 const global = struct {
+    var allocator: std.mem.Allocator = undefined;
+    var event_buffer: std.ArrayListUnmanaged(wth.Event) = undefined;
+    var window_proc_error: std.mem.Allocator.Error!void = undefined;
+    var wm_quit_posted: bool = undefined;
+
     /// Handle to the main thread as a fiber.
     var main_thread_fiber = if (__flags.win32_fibers) @as(*anyopaque, undefined) else void{};
     /// Handle to the message fiber.
     var message_fiber = if (__flags.win32_fibers) @as(*anyopaque, undefined) else void{};
     /// Whether WM_QUIT has been posted with any exit code.
-    var quit_posted: bool = undefined;
     /// The single window or list of windows.
     var window_head: *Window = undefined;
     /// Whether we're at least on Windows 10 1703 (Build 15063; April 2017; Redstone / "Creators Update").
@@ -275,7 +276,17 @@ const global = struct {
     var window = if (__flags.multi_window) void{} else @as(*Window, undefined);
 };
 
-pub fn init(_: wth.InitOptions) wth.InitError!void {
+// for internal use
+pub inline fn getAllocator() std.mem.Allocator {
+    return global.allocator;
+}
+
+pub fn init(allocator: std.mem.Allocator, _: wth.InitOptions) wth.InitError!void {
+    global.allocator = allocator;
+    global.event_buffer = @TypeOf(global.event_buffer){};
+    global.wm_quit_posted = false;
+    global.window_proc_error = void{};
+
     var major: u32, var minor: u32, var build: u32 = .{ undefined, undefined, undefined };
     RtlGetNtVersionNumbers(&major, &minor, &build);
     build &= ~@as(u32, 0xF0000000);
@@ -305,8 +316,6 @@ pub fn init(_: wth.InitOptions) wth.InitError!void {
             return error.SystemResources;
         errdefer DeleteFiber(global.message_fiber);
     }
-
-    global.quit_posted = false;
 }
 
 pub fn deinit() void {
@@ -315,45 +324,51 @@ pub fn deinit() void {
         DeleteFiber(global.message_fiber);
         assert(ConvertFiberToThread() != 0);
     } else {
+        // TODO: I forgot why I call this here on the single window case
         drainMessageQueue();
     }
+    global.event_buffer.deinit(global.allocator);
+}
+
+pub fn events() []const wth.Event {
+    return global.event_buffer.items;
 }
 
 pub inline fn sync() wth.SyncError!void {
+    global.event_buffer.items.len = 0;
     if (__flags.win32_fibers) {
         SwitchToFiber(global.message_fiber);
     } else {
         drainMessageQueue();
     }
-    if (global.quit_posted) {
+    if (global.wm_quit_posted) {
         return error.Shutdown;
     }
+    const err = global.window_proc_error;
+    global.window_proc_error = void{};
+    try err;
 }
 
 pub const Window = struct {
-    allocator: std.mem.Allocator,
     class_atom: ATOM,
     dpi: u32,
     hwnd: HWND,
 
     controls: wth.WindowControls,
-    size: [2]u15,
+    size: [2]wth.Window.Coordinate,
 
     ex_style: u32,
     style: u32,
 
     pub fn emplace(
         window: *Window,
-        allocator: std.mem.Allocator,
         options: wth.Window.CreateOptions,
     ) wth.Window.CreateError!void {
-        window.allocator = allocator;
-
         if (!__flags.multi_window) {
             global.window = window;
         }
 
-        var sf = std.heap.stackFallback(1024, window.allocator);
+        var sf = std.heap.stackFallback(1024, global.allocator);
         var sfa = sf.get();
 
         // check if the window class exists, if not, register it
@@ -468,6 +483,12 @@ pub const Window = struct {
         }
     }
 
+    pub const Tag = HWND;
+
+    pub inline fn tag(window: *Window) wth.Window.Tag {
+        return .{ .impl = window.hwnd };
+    }
+
     fn adjustWindowRect(window: *const Window) struct { i32, i32 } {
         var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
         assert(AdjustWindowRectExForDpi(&rect, window.style, FALSE, window.ex_style, window.dpi) != 0);
@@ -506,17 +527,11 @@ pub const Window = struct {
     }
 };
 
+// -- utility functions --
+
 inline fn atomCast(atom: ATOM) [*:0]const u16 {
     @setRuntimeSafety(false);
     return @ptrFromInt(atom);
-}
-
-inline fn hwndToWindow(hwnd: HWND) *Window {
-    if (__flags.multi_window) {
-        return @ptrFromInt(GetWindowLongPtrW(hwnd, GWL_USERDATA));
-    } else {
-        return global.window;
-    }
 }
 
 fn monitorDpi(hmonitor: HMONITOR) u32 {
@@ -525,11 +540,41 @@ fn monitorDpi(hmonitor: HMONITOR) u32 {
     return xdpi;
 }
 
+// TODO: Would inlining this be better to not copy the Event?
+fn pushEvent(event: wth.Event) std.mem.Allocator.Error!void {
+    try global.event_buffer.append(global.allocator, event);
+}
+
 inline fn utf8ToUtf16LeWithNullAssumeValid(allocator: std.mem.Allocator, utf8: []const u8) std.mem.Allocator.Error![:0]u16 {
     return std.unicode.utf8ToUtf16LeWithNull(allocator, utf8) catch |err| switch (err) {
         error.InvalidUtf8 => unreachable,
         error.OutOfMemory => return error.OutOfMemory,
     };
+}
+
+inline fn windowFromHwnd(hwnd: HWND) *Window {
+    if (__flags.multi_window) {
+        return @ptrFromInt(GetWindowLongPtrW(hwnd, GWL_USERDATA));
+    } else {
+        return global.window;
+    }
+}
+
+inline fn windowTagFromHwnd(hwnd: HWND) wth.Window.Tag {
+    // HWNDs are allocated in 32-bit range for WoW64 IPC compatibility, etc, so this is safe
+    return if (__flags.multi_window) .{ .impl = hwnd } else void{};
+}
+
+// -- windowproc and friends --
+
+const fiber_proc_stack_size = 1024; // TODO: probably drop this
+const fiber_timer_id = 1;
+
+fn fiberProc(_: ?*anyopaque) callconv(WINAPI) void {
+    while (true) {
+        drainMessageQueue();
+        SwitchToFiber(global.main_thread_fiber);
+    }
 }
 
 fn drainMessageQueue() void {
@@ -540,70 +585,38 @@ fn drainMessageQueue() void {
         }
         if (msg.message != WM_QUIT) {
             _ = DispatchMessageW(&msg);
+            if (global.window_proc_error) {} else |_| {
+                // @cold
+                return;
+            }
         } else {
-            global.quit_posted = true;
+            // @cold
+            global.wm_quit_posted = true;
         }
     }
 }
 
-const fiber_proc_stack_size = 1024;
-const fiber_timer_id = 1;
-
-fn fiberProc(_: ?*anyopaque) callconv(WINAPI) void {
-    while (true) {
-        drainMessageQueue();
-        SwitchToFiber(global.main_thread_fiber);
-    }
-}
-
-fn windowProc(
+noinline fn windowProc(
     hwnd: HWND,
     message: u32,
     wparam: WPARAM,
     lparam: LPARAM,
 ) callconv(WINAPI) LRESULT {
+    return windowProcMeta(hwnd, message, wparam, lparam) catch |err| {
+        global.window_proc_error = err;
+        return 0;
+    };
+}
+
+fn windowProcMeta(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) std.mem.Allocator.Error!LRESULT {
     switch (message) {
-        // HACK: Until there's an event mechanism just treat the close button the same as task manager telling us to fuck off.
-        WM_CLOSE => {
-            PostQuitMessage(0);
-            return 0;
-        },
-        WM_DESTROY => {
-            return 0;
-        },
-
-        WM_NCCREATE => {
-            // Per-Monitor DPI Awareness V1
-            if (!global.win10_1703_or_later) {
-                assert(EnableNonClientDpiScaling(hwnd) != 0);
-            }
-
-            // store *Window for later usage, if it's single window then just use a global to save a lot of calls
-            if (__flags.multi_window) {
-                const cs: *const CREATESTRUCTW = @ptrFromInt(@as(usize, @bitCast(lparam)));
-                _ = SetWindowLongPtrW(hwnd, GWL_USERDATA, @intFromPtr(cs.lpCreateParams.?));
-            }
-
-            return DefWindowProcW(hwnd, message, wparam, lparam);
-        },
-
-        WM_DPICHANGED => {
-            const window = hwndToWindow(hwnd);
-            window.dpi = @truncate(wparam & 0xFFFF); // LOWORD is X DPI
-            const width, const height = window.adjustWindowRectAddSize();
-            const suggestion_rect: *const RECT = @ptrFromInt(@as(usize, @bitCast(lparam)));
-            assert(SetWindowPos(
-                window.hwnd,
-                null,
-                suggestion_rect.left,
-                suggestion_rect.top,
-                width,
-                height,
-                SWP_NOACTIVATE | SWP_NOZORDER,
-            ) != 0);
-            return 0;
-        },
-
+        // magic spell to have fibers allow us to size/move without blocking sync()
+        // TODO: explain what and how ^^^^^^^??? (i dont feel like it rn)
         WM_ENTERSIZEMOVE => {
             if (__flags.win32_fibers) {
                 assert(SetTimer(hwnd, fiber_timer_id, 1, null) != 0);
@@ -620,6 +633,54 @@ fn windowProc(
             if (__flags.win32_fibers and wparam == fiber_timer_id) {
                 SwitchToFiber(global.main_thread_fiber);
             }
+            return 0;
+        },
+
+        WM_NCCREATE => {
+            // enable per-monitor dpi awareness v1
+            if (!global.win10_1703_or_later) {
+                assert(EnableNonClientDpiScaling(hwnd) != 0);
+            }
+            // store *Window for windowFromHwnd(), if it's single window then just use the global
+            if (__flags.multi_window) {
+                const cs: *const CREATESTRUCTW = @ptrFromInt(@as(usize, @bitCast(lparam)));
+                _ = SetWindowLongPtrW(hwnd, GWL_USERDATA, @intFromPtr(cs.lpCreateParams.?));
+            }
+            return DefWindowProcW(hwnd, message, wparam, lparam);
+        },
+
+        WM_CLOSE => {
+            try pushEvent(.{ .close_request = windowTagFromHwnd(hwnd) });
+            return 0;
+        },
+
+        WM_MOUSEMOVE => {
+            const window = windowFromHwnd(hwnd);
+            const xy: u32 = @truncate(@as(usize, @bitCast(lparam)));
+            const x: i16 = @bitCast(@as(u16, @truncate(xy)));
+            const y: i16 = @bitCast(@as(u16, @truncate(xy >> 16)));
+            // getting mouse coordinates outside of the client area is possible with some window styles, even if it shouldn't do that
+            // the drop shadow etc counts as part of the window rectangle and can sometimes send events if it feels like. not documented
+            if (x >= 0 and x <= window.size[0] and y >= 0 and y <= window.size[1]) {
+                try pushEvent(.{ .mouse_move = .{ .x = @intCast(x), .y = @intCast(y), .window = window.tag() } });
+            }
+            return 0;
+        },
+
+        WM_DPICHANGED => {
+            const window = windowFromHwnd(hwnd);
+            window.dpi = @truncate(wparam & 0xFFFF); // LOWORD is X DPI
+            const width, const height = window.adjustWindowRectAddSize();
+            const suggestion_rect: *const RECT = @ptrFromInt(@as(usize, @bitCast(lparam)));
+            assert(SetWindowPos(
+                window.hwnd,
+                null,
+                suggestion_rect.left,
+                suggestion_rect.top,
+                width,
+                height,
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            ) != 0);
             return 0;
         },
 

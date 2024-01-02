@@ -6,14 +6,21 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    try wth.init(.{});
+    try wth.init(allocator, .{});
     defer wth.deinit();
 
-    const window = try wth.Window.create(allocator, .{});
+    const window = try wth.Window.create(.{});
     defer window.destroy();
 
-    while (true) {
-        //std.debug.print("sync! {}\n", .{std.time.nanoTimestamp()});
+    main: while (true) {
+        for (wth.events()) |event| {
+            std.debug.print("> {any}\n", .{event});
+            if (event == .close_request) {
+                break :main;
+            }
+        }
         try wth.sync();
     }
+
+    std.debug.print("goodbye\n", .{});
 }
