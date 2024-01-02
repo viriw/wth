@@ -502,7 +502,7 @@ pub const Window = struct {
     fn refreshCloseButton(window: *const Window) void {
         if (!window.controls.border) return;
         const state = if (window.controls.close) MF_ENABLED else MF_DISABLED | MF_GRAYED;
-        _ = EnableMenuItem(GetSystemMenu(window.hwnd, FALSE).?, SC_CLOSE, MF_BYCOMMAND | param);
+        _ = EnableMenuItem(GetSystemMenu(window.hwnd, FALSE).?, SC_CLOSE, MF_BYCOMMAND | state);
     }
 };
 
