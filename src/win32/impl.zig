@@ -483,10 +483,6 @@ pub const Window = struct {
         }
     }
 
-    pub inline fn tag(window: *Window) wth.Window.Tag {
-        return windowTagFromHwnd(window.hwnd);
-    }
-
     fn adjustWindowRect(window: *const Window) struct { i32, i32 } {
         var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
         assert(AdjustWindowRectExForDpi(&rect, window.style, FALSE, window.ex_style, window.dpi) != 0);
@@ -497,6 +493,10 @@ pub const Window = struct {
         const width, const height = window.size;
         const addw, const addh = window.adjustWindowRect();
         return .{ width + addw, height + addh };
+    }
+
+    inline fn getWrapper(window: *Window) *wth.Window {
+        return @fieldParentPtr(wth.Window, "impl", window);
     }
 
     fn recalculateWindowStyle(window: *Window) void {
@@ -556,11 +556,6 @@ inline fn windowFromHwnd(hwnd: HWND) *Window {
     } else {
         return global.window;
     }
-}
-
-inline fn windowTagFromHwnd(hwnd: HWND) wth.Window.Tag {
-    // HWNDs are allocated in 32-bit range for WoW64 IPC compatibility, etc, so this is safe
-    return if (__flags.multi_window) @truncate(@intFromPtr(hwnd)) else void{};
 }
 
 // -- windowproc and friends --
@@ -648,7 +643,7 @@ fn windowProcMeta(
         },
 
         WM_CLOSE => {
-            try pushEvent(.{ .close_request = windowTagFromHwnd(hwnd) });
+            try pushEvent(.{ .close_request = windowFromHwnd(hwnd).getWrapper() });
             return 0;
         },
 
@@ -660,7 +655,7 @@ fn windowProcMeta(
             // getting mouse coordinates outside of the client area is possible with some window styles, even if it shouldn't do that
             // the drop shadow etc counts as part of the window rectangle and can sometimes send events if it feels like. not documented
             if (x >= 0 and x <= window.size[0] and y >= 0 and y <= window.size[1]) {
-                try pushEvent(.{ .mouse_move = .{ .x = @intCast(x), .y = @intCast(y), .window = window.tag() } });
+                try pushEvent(.{ .mouse_move = .{ .x = @intCast(x), .y = @intCast(y), .window = window.getWrapper() } });
             }
             return 0;
         },

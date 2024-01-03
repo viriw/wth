@@ -30,13 +30,13 @@ pub fn sync() SyncError!void {
 }
 
 pub const Event = union(enum) {
-    close_request: Window.Tag,
+    close_request: *Window,
     mouse_move: MouseMove,
 
     pub const MouseMove = struct {
         x: Window.Coordinate,
         y: Window.Coordinate,
-        window: Window.Tag,
+        window: *Window,
     };
 };
 
@@ -59,7 +59,6 @@ pub const Window = struct {
         resize: bool = true,
     };
     pub const Coordinate = u15;
-    pub const Tag = if (__flags.multi_window) u32 else void;
 
     pub fn create(options: CreateOptions) CreateError!*Window {
         const allocator = impl.getAllocator();
@@ -73,9 +72,5 @@ pub const Window = struct {
         const allocator = impl.getAllocator();
         defer allocator.destroy(window);
         window.impl.deinit();
-    }
-
-    pub fn tag(window: *Window) Window.Tag {
-        return window.impl.tag();
     }
 };
