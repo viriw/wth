@@ -354,7 +354,7 @@ pub const Window = struct {
     dpi: u32,
     hwnd: HWND,
 
-    controls: wth.WindowControls,
+    controls: wth.Window.Controls,
     size: [2]wth.Window.Coordinate,
 
     ex_style: u32,

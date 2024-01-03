@@ -45,10 +45,18 @@ pub const Window = struct {
 
     pub const CreateError = error{SystemResources} || std.mem.Allocator.Error;
     pub const CreateOptions = struct {
-        controls: WindowControls = .{},
         class_name: []const u8 = "wth",
+        controls: Window.Controls = .{},
         size: [2]Window.Coordinate = .{ 800, 608 },
         title: []const u8 = "a nice window",
+    };
+
+    pub const Controls = packed struct {
+        border: bool = true,
+        close: bool = true,
+        minimize: bool = true,
+        maximize: bool = true,
+        resize: bool = true,
     };
     pub const Coordinate = u15;
     pub const Tag = if (__flags.multi_window) u32 else void;
@@ -70,12 +78,4 @@ pub const Window = struct {
     pub fn tag(window: *Window) Window.Tag {
         return window.impl.tag();
     }
-};
-
-pub const WindowControls = packed struct {
-    border: bool = true,
-    close: bool = true,
-    minimize: bool = true,
-    maximize: bool = true,
-    resize: bool = true,
 };
