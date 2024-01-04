@@ -52,8 +52,11 @@ const SWP_NOSENDCHANGING = @as(u32, 1024);
 const SWP_NOSIZE = @as(u32, 1);
 const SWP_NOZORDER = @as(u32, 4);
 const SWP_SHOWWINDOW = @as(u32, 64);
+const TRUE = @as(BOOL, 1);
 const WM_CLOSE = @as(u32, 16);
 const WM_DESTROY = @as(u32, 2);
+const WM_SIZE = @as(u32, 5);
+const WM_GETMINMAXINFO = @as(u32, 36);
 const WM_DPICHANGED = @as(u32, 736);
 const WM_ENTERSIZEMOVE = @as(u32, 561);
 const WM_EXITSIZEMOVE = @as(u32, 562);
@@ -61,6 +64,16 @@ const WM_NCCREATE = @as(u32, 129);
 const WM_QUIT = @as(u32, 18);
 const WM_TIMER = @as(u32, 275);
 const WM_MOUSEMOVE = @as(u32, 512);
+const WM_SIZING = @as(u32, 532);
+
+const WMSZ_LEFT = @as(WPARAM, 1);
+const WMSZ_RIGHT = @as(WPARAM, 2);
+const WMSZ_TOP = @as(WPARAM, 3);
+const WMSZ_TOPLEFT = @as(WPARAM, 4);
+const WMSZ_TOPRIGHT = @as(WPARAM, 5);
+const WMSZ_BOTTOM = @as(WPARAM, 6);
+const WMSZ_BOTTOMLEFT = @as(WPARAM, 7);
+const WMSZ_BOTTOMRIGHT = @as(WPARAM, 8);
 
 // TODO: Remove the ones we don't need here. I adapted these from winapi-rs with regexes (lol).
 const WS_OVERLAPPED = @as(u32, 0x00000000);
@@ -153,6 +166,13 @@ const IMAGE_DOS_HEADER = extern struct {
     e_oeminfo: u16,
     e_res2: [10]u16,
     e_lfanew: i32,
+};
+const MINMAXINFO = extern struct {
+    ptReserved: POINT,
+    ptMaxSize: POINT,
+    ptMaxPosition: POINT,
+    ptMinTrackSize: POINT,
+    ptMaxTrackSize: POINT,
 };
 const MSG = extern struct {
     hwnd: ?HWND,
@@ -355,7 +375,9 @@ pub const Window = struct {
     hwnd: HWND,
 
     controls: wth.Window.Controls,
-    size: [2]wth.Window.Coordinate,
+    resize_hook: ?wth.Window.ResizeHook,
+    size: @Vector(2, wth.Window.Coordinate),
+    wra: @Vector(2, wth.Window.Coordinate),
 
     ex_style: u32,
     style: u32,
@@ -414,16 +436,18 @@ pub const Window = struct {
         errdefer if (class_created_here) assert(UnregisterClassW(atomCast(window.class_atom), imageBase()) != 0);
 
         window.dpi = monitorDpi(MonitorFromPoint(.{ .x = 0, .y = 0 }, MONITOR_DEFAULTTOPRIMARY).?);
+        window.resize_hook = options.resize_hook;
         window.size = options.size;
 
         // caches style, ex_style
         window.controls = options.controls;
         window.recalculateWindowStyle();
+        window.recalculateWindowRectangleAdjustment();
 
         sfa = sf.get(); // reset
         const title = try utf8ToUtf16LeWithNullAssumeValid(sfa, options.title);
         defer sfa.free(title);
-        var width, var height = window.adjustWindowRectAddSize();
+        const width, const height = window.size + window.wra;
         window.hwnd = CreateWindowExW(
             window.ex_style,
             atomCast(window.class_atom),
@@ -451,7 +475,8 @@ pub const Window = struct {
             const dpi = monitorDpi(MonitorFromWindow(window.hwnd, MONITOR_DEFAULTTOPRIMARY).?);
             if (dpi != window.dpi) {
                 window.dpi = dpi;
-                width, height = window.adjustWindowRectAddSize();
+                window.recalculateWindowRectangleAdjustment();
+                width, height = window.size + window.wra;
                 assert(SetWindowPos(window.hwnd, null, 0, 0, width, height, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER) != 0);
             }
         }
@@ -483,20 +508,14 @@ pub const Window = struct {
         }
     }
 
-    fn adjustWindowRect(window: *const Window) struct { i32, i32 } {
-        var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
-        assert(AdjustWindowRectExForDpi(&rect, window.style, FALSE, window.ex_style, window.dpi) != 0);
-        return .{ -rect.left + rect.right, -rect.top + rect.bottom };
-    }
-
-    fn adjustWindowRectAddSize(window: *const Window) struct { i32, i32 } {
-        const width, const height = window.size;
-        const addw, const addh = window.adjustWindowRect();
-        return .{ width + addw, height + addh };
-    }
-
     inline fn getWrapper(window: *Window) *wth.Window {
         return @fieldParentPtr(wth.Window, "impl", window);
+    }
+
+    fn recalculateWindowRectangleAdjustment(window: *Window) void {
+        var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
+        assert(AdjustWindowRectExForDpi(&rect, window.style, FALSE, window.ex_style, window.dpi) != 0);
+        window.wra = .{ @intCast(rect.right - rect.left), @intCast(rect.bottom - rect.top) };
     }
 
     fn recalculateWindowStyle(window: *Window) void {
@@ -660,10 +679,77 @@ fn windowProcMeta(
             return 0;
         },
 
+        WM_GETMINMAXINFO => {
+            const window = windowFromHwnd(hwnd);
+            const mmi: *MINMAXINFO = @ptrFromInt(@as(usize, @bitCast(lparam)));
+            mmi.ptMinTrackSize = .{ .x = 1 + window.wra[0], .y = 1 + window.wra[1] };
+            return 0;
+        },
+        WM_SIZE => {
+            const window = windowFromHwnd(hwnd);
+            const xy: u32 = @truncate(@as(usize, @bitCast(lparam)));
+            window.size = .{ @truncate(xy), @truncate(xy >> 16) };
+            return 0;
+        },
+        WM_SIZING => {
+            const window = windowFromHwnd(hwnd);
+            if (window.resize_hook) |hook| {
+                const rect: *RECT = @ptrFromInt(@as(usize, @bitCast(lparam)));
+                var new = @Vector(2, wth.Window.Coordinate){
+                    @intCast(rect.right - rect.left),
+                    @intCast(rect.bottom - rect.top),
+                };
+                const direction: wth.Window.ResizeDirection = switch (wparam) {
+                    WMSZ_LEFT => .left,
+                    WMSZ_RIGHT => .right,
+                    WMSZ_TOP => .top,
+                    WMSZ_TOPLEFT => .top_left,
+                    WMSZ_TOPRIGHT => .top_right,
+                    WMSZ_BOTTOM => .bottom,
+                    WMSZ_BOTTOMLEFT => .bottom_left,
+                    WMSZ_BOTTOMRIGHT => .bottom_right,
+                    else => unreachable,
+                };
+                assert(new[0] > window.wra[0] and new[1] > window.wra[1]);
+                new -= window.wra;
+                new = hook(window.size, new, direction);
+                new += window.wra;
+                const new_rect = switch (direction) {
+                    .right, .bottom, .bottom_right => .{
+                        .left = rect.left,
+                        .top = rect.top,
+                        .right = rect.left + new[0],
+                        .bottom = rect.top + new[1],
+                    },
+                    .left, .bottom_left => .{
+                        .left = rect.right - new[0],
+                        .top = rect.top,
+                        .right = rect.right,
+                        .bottom = rect.top + new[1],
+                    },
+                    .top_left => .{
+                        .left = rect.right - new[0],
+                        .top = rect.bottom - new[1],
+                        .right = rect.right,
+                        .bottom = rect.bottom,
+                    },
+                    .top, .top_right => .{
+                        .left = rect.left,
+                        .top = rect.bottom - new[1],
+                        .right = rect.left + new[0],
+                        .bottom = rect.bottom,
+                    },
+                };
+                rect.* = new_rect;
+            }
+            return TRUE;
+        },
+
         WM_DPICHANGED => {
             const window = windowFromHwnd(hwnd);
             window.dpi = @truncate(wparam & 0xFFFF); // LOWORD is X DPI
-            const width, const height = window.adjustWindowRectAddSize();
+            window.recalculateWindowRectangleAdjustment();
+            const width, const height = window.size + window.wra;
             const suggestion_rect: *const RECT = @ptrFromInt(@as(usize, @bitCast(lparam)));
             assert(SetWindowPos(
                 window.hwnd,

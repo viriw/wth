@@ -47,7 +47,8 @@ pub const Window = struct {
     pub const CreateOptions = struct {
         class_name: []const u8 = "wth",
         controls: Window.Controls = .{},
-        size: [2]Window.Coordinate = .{ 800, 608 },
+        resize_hook: ?Window.ResizeHook = null,
+        size: @Vector(2, Window.Coordinate) = .{ 800, 608 },
         title: []const u8 = "a nice window",
     };
 
@@ -59,6 +60,21 @@ pub const Window = struct {
         resize: bool = true,
     };
     pub const Coordinate = u15;
+    pub const ResizeDirection = enum {
+        left,
+        right,
+        top,
+        top_left,
+        top_right,
+        bottom,
+        bottom_left,
+        bottom_right,
+    };
+    pub const ResizeHook = *const fn (
+        from: @Vector(2, Window.Coordinate),
+        to: @Vector(2, Window.Coordinate),
+        direction: Window.ResizeDirection,
+    ) @Vector(2, Window.Coordinate);
 
     pub fn create(options: CreateOptions) CreateError!*Window {
         const allocator = impl.getAllocator();
