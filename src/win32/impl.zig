@@ -33,7 +33,6 @@ const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = @as(isize, -4);
 const FALSE = @as(BOOL, 0);
 const GWL_EXSTYLE = @as(i32, -20);
 const GWL_STYLE = @as(i32, -16);
-const GWL_USERDATA = @as(i32, -21);
 const MDT_EFFECTIVE_DPI = @as(i32, 0);
 const MF_BYCOMMAND = @as(u32, 0);
 const MF_DISABLED = @as(u32, 2);
@@ -132,20 +131,20 @@ const WS_EX_COMPOSITED = @as(u32, 0x02000000);
 const WS_EX_NOACTIVATE = @as(u32, 0x08000000);
 
 // structure definitions
-const CREATESTRUCTW = extern struct {
-    lpCreateParams: ?*anyopaque,
-    hInstance: ?HINSTANCE,
-    hMenu: ?HMENU,
-    hwndParent: ?HWND,
-    cy: i32,
-    cx: i32,
-    y: i32,
-    x: i32,
-    style: i32,
-    lpszName: [*:0]const u16,
-    lpszClass: [*:0]const u16,
-    dwExStyle: u32,
-};
+// const CREATESTRUCTW = extern struct {
+//     lpCreateParams: ?*anyopaque,
+//     hInstance: ?HINSTANCE,
+//     hMenu: ?HMENU,
+//     hwndParent: ?HWND,
+//     cy: i32,
+//     cx: i32,
+//     y: i32,
+//     x: i32,
+//     style: i32,
+//     lpszName: [*:0]const u16,
+//     lpszClass: [*:0]const u16,
+//     dwExStyle: u32,
+// };
 const IMAGE_DOS_HEADER = extern struct {
     e_magic: u16,
     e_cblp: u16,
@@ -280,20 +279,17 @@ const global = struct {
     var window_proc_error: std.mem.Allocator.Error!void = undefined;
     var wm_quit_posted: bool = undefined;
 
+    var window_head: ?*Window = undefined;
+
     /// Handle to the main thread as a fiber.
     var main_thread_fiber = if (__flags.win32_fibers) @as(*anyopaque, undefined) else void{};
     /// Handle to the message fiber.
     var message_fiber = if (__flags.win32_fibers) @as(*anyopaque, undefined) else void{};
-    /// Whether WM_QUIT has been posted with any exit code.
-    /// The single window or list of windows.
-    var window_head: *Window = undefined;
+
     /// Whether we're at least on Windows 10 1703 (Build 15063; April 2017; Redstone / "Creators Update").
     var win10_1703_or_later: bool = undefined;
     /// Whether we're at least on Windows 11 21H2 (Build 22000; October 2021; Sun Valley).
     var win11_21h2_or_later: bool = undefined;
-
-    // TODO: documentation, architecture, etc
-    var window = if (__flags.multi_window) void{} else @as(*Window, undefined);
 };
 
 // for internal use
@@ -306,6 +302,8 @@ pub fn init(allocator: std.mem.Allocator, _: wth.InitOptions) wth.InitError!void
     global.event_buffer = @TypeOf(global.event_buffer){};
     global.wm_quit_posted = false;
     global.window_proc_error = void{};
+
+    global.window_head = null;
 
     var major: u32, var minor: u32, var build: u32 = .{ undefined, undefined, undefined };
     RtlGetNtVersionNumbers(&major, &minor, &build);
@@ -372,7 +370,7 @@ pub inline fn sync() wth.SyncError!void {
 pub const Window = struct {
     class_atom: ATOM,
     dpi: u32,
-    hwnd: HWND,
+    hwnd: ?HWND,
 
     controls: wth.Window.Controls,
     resize_hook: ?wth.Window.ResizeHook,
@@ -382,13 +380,24 @@ pub const Window = struct {
     ex_style: u32,
     style: u32,
 
+    // intrusive linked list
+    prev: if (__flags.multi_window) ?*Window else void,
+    next: if (__flags.multi_window) ?*Window else void,
+
     pub fn emplace(
         window: *Window,
         options: wth.Window.CreateOptions,
     ) wth.Window.CreateError!void {
-        if (!__flags.multi_window) {
-            global.window = window;
+        // make new head of linked list
+        if (__flags.multi_window) {
+            if (global.window_head) |head| {
+                head.prev = window;
+            }
+            window.prev = null;
+            window.next = global.window_head;
         }
+        global.window_head = window;
+        errdefer if (__flags.multi_window) window.removeFromLinkedList();
 
         var sf = std.heap.stackFallback(1024, global.allocator);
         var sfa = sf.get();
@@ -448,6 +457,7 @@ pub const Window = struct {
         const title = try utf8ToUtf16LeWithNullAssumeValid(sfa, options.title);
         defer sfa.free(title);
         const width, const height = window.size + window.wra;
+        window.hwnd = null; // will be read inside call below
         window.hwnd = CreateWindowExW(
             window.ex_style,
             atomCast(window.class_atom),
@@ -460,7 +470,7 @@ pub const Window = struct {
             null,
             null,
             imageBase(),
-            if (__flags.multi_window) window else null,
+            null,
         ) orelse {
             // TODO: It can be other errors like returned from WM_{NC}CREATE (by us) and so on, of course.
             return error.SystemResources;
@@ -472,35 +482,37 @@ pub const Window = struct {
         // belt and suspenders: let's get the default monitor (again)
         // on my machine CW_USEDEFAULT always goes to the primary, but...
         {
-            const dpi = monitorDpi(MonitorFromWindow(window.hwnd, MONITOR_DEFAULTTOPRIMARY).?);
+            const dpi = monitorDpi(MonitorFromWindow(window.hwnd.?, MONITOR_DEFAULTTOPRIMARY).?);
             if (dpi != window.dpi) {
                 window.dpi = dpi;
                 window.recalculateWindowRectangleAdjustment();
                 width, height = window.size + window.wra;
-                assert(SetWindowPos(window.hwnd, null, 0, 0, width, height, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER) != 0);
+                assert(SetWindowPos(window.hwnd.?, null, 0, 0, width, height, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER) != 0);
             }
         }
 
-        // increment window class reference count
         if (__flags.multi_window) {
-            _ = SetClassLongPtrW(window.hwnd, 0, GetClassLongPtrW(window.hwnd, 0) + 1);
+            // increment window class reference count
+            _ = SetClassLongPtrW(window.hwnd.?, 0, GetClassLongPtrW(window.hwnd.?, 0) + 1);
         }
 
         // ready to go! (do this at the end)
-        assert(ShowWindow(window.hwnd, SW_SHOW) == 0);
+        assert(ShowWindow(window.hwnd.?, SW_SHOW) == 0);
     }
 
     pub fn deinit(window: *Window) void {
-        // decrement window class reference count
         var unregister_class = !__flags.multi_window;
+
+        // decrement window class reference count, remove from linked list
         if (__flags.multi_window) {
-            if (SetClassLongPtrW(window.hwnd, 0, GetClassLongPtrW(window.hwnd, 0) - 1) == 0) {
+            if (SetClassLongPtrW(window.hwnd.?, 0, GetClassLongPtrW(window.hwnd.?, 0) - 1) == 0) {
                 unregister_class = true;
             }
+            window.removeFromLinkedList();
         }
 
         // the window needs to exist for the above calls so we awkwardly destroy it in the middle
-        assert(DestroyWindow(window.hwnd) != 0);
+        assert(DestroyWindow(window.hwnd.?) != 0);
 
         // unregister if reference count hits 0 (or if !multi_window)
         if (unregister_class) {
@@ -540,7 +552,18 @@ pub const Window = struct {
     fn refreshCloseButton(window: *const Window) void {
         if (!window.controls.border) return;
         const state = if (window.controls.close) MF_ENABLED else MF_DISABLED | MF_GRAYED;
-        _ = EnableMenuItem(GetSystemMenu(window.hwnd, FALSE).?, SC_CLOSE, MF_BYCOMMAND | state);
+        _ = EnableMenuItem(GetSystemMenu(window.hwnd.?, FALSE).?, SC_CLOSE, MF_BYCOMMAND | state);
+    }
+
+    fn removeFromLinkedList(window: *Window) void {
+        if (window.prev) |prev| {
+            prev.next = window.next;
+        } else {
+            global.window_head = window.next;
+        }
+        if (window.next) |next| {
+            next.prev = window.prev;
+        }
     }
 };
 
@@ -570,10 +593,23 @@ inline fn utf8ToUtf16LeWithNullAssumeValid(allocator: std.mem.Allocator, utf8: [
 }
 
 inline fn windowFromHwnd(hwnd: HWND) *Window {
+    var head = global.window_head;
     if (__flags.multi_window) {
-        return @ptrFromInt(GetWindowLongPtrW(hwnd, GWL_USERDATA));
+        while (head) |window| : (head = window.next) {
+            if (window.hwnd) |x| {
+                if (x == hwnd) {
+                    return window;
+                }
+            } else {
+                // must be here before CreateWindowExW returned
+                // in that case, it has to be the right window
+                return window;
+            }
+        } else {
+            unreachable;
+        }
     } else {
-        return global.window;
+        return head.?;
     }
 }
 
@@ -652,11 +688,6 @@ fn windowProcMeta(
             // enable per-monitor dpi awareness v1
             if (!global.win10_1703_or_later) {
                 assert(EnableNonClientDpiScaling(hwnd) != 0);
-            }
-            // store *Window for windowFromHwnd(), if it's single window then just use the global
-            if (__flags.multi_window) {
-                const cs: *const CREATESTRUCTW = @ptrFromInt(@as(usize, @bitCast(lparam)));
-                _ = SetWindowLongPtrW(hwnd, GWL_USERDATA, @intFromPtr(cs.lpCreateParams.?));
             }
             return DefWindowProcW(hwnd, message, wparam, lparam);
         },
@@ -752,7 +783,7 @@ fn windowProcMeta(
             const width, const height = window.size + window.wra;
             const suggestion_rect: *const RECT = @ptrFromInt(@as(usize, @bitCast(lparam)));
             assert(SetWindowPos(
-                window.hwnd,
+                window.hwnd.?,
                 null,
                 suggestion_rect.left,
                 suggestion_rect.top,
