@@ -538,10 +538,10 @@ pub const Window = struct {
         } else {
             window.style |= WS_POPUP;
         }
-        if (window.controls.minimize) {
+        if (window.controls.minimise) {
             window.style |= WS_MINIMIZEBOX;
         }
-        if (window.controls.maximize) {
+        if (window.controls.maximise) {
             window.style |= WS_MAXIMIZEBOX;
         }
         if (window.controls.resize) {

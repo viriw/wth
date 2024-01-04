@@ -55,8 +55,8 @@ pub const Window = struct {
     pub const Controls = packed struct {
         border: bool = true,
         close: bool = true,
-        minimize: bool = true,
-        maximize: bool = true,
+        minimise: bool = true,
+        maximise: bool = true,
         resize: bool = true,
     };
     pub const Coordinate = u15;
