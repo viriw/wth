@@ -380,8 +380,7 @@ pub const Window = struct {
     ex_style: u32,
     style: u32,
 
-    // intrusive linked list
-    prev: if (__flags.multi_window) ?*Window else void,
+    // intrusive linked list time!
     next: if (__flags.multi_window) ?*Window else void,
 
     pub fn emplace(
@@ -390,14 +389,12 @@ pub const Window = struct {
     ) wth.Window.CreateError!void {
         // make new head of linked list
         if (__flags.multi_window) {
-            if (global.window_head) |head| {
-                head.prev = window;
-            }
-            window.prev = null;
             window.next = global.window_head;
         }
         global.window_head = window;
-        errdefer if (__flags.multi_window) window.removeFromLinkedList();
+        errdefer if (__flags.multi_window) {
+            global.window_head = window.next;
+        };
 
         var sf = std.heap.stackFallback(1024, global.allocator);
         var sfa = sf.get();
@@ -556,13 +553,18 @@ pub const Window = struct {
     }
 
     fn removeFromLinkedList(window: *Window) void {
-        if (window.prev) |prev| {
-            prev.next = window.next;
-        } else {
+        if (global.window_head.? == window) {
             global.window_head = window.next;
-        }
-        if (window.next) |next| {
-            next.prev = window.prev;
+        } else {
+            var iter = global.window_head;
+            while (iter) |head| : (iter = head.next) {
+                if (head.next == window) {
+                    head.next = window.next;
+                    break;
+                }
+            } else {
+                unreachable;
+            }
         }
     }
 };
