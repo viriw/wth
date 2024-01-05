@@ -13,6 +13,7 @@ const __flags = @import("../__flags.zig");
 // type definitions
 const ATOM = u16;
 const BOOL = i32;
+const HANDLE = *anyopaque;
 const HBRUSH = *opaque {};
 const HCURSOR = *opaque {};
 const HICON = *opaque {};
@@ -33,6 +34,24 @@ const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = @as(isize, -4);
 const FALSE = @as(BOOL, 0);
 const GWL_EXSTYLE = @as(i32, -20);
 const GWL_STYLE = @as(i32, -16);
+const HTCLIENT = @as(u32, 1);
+const IDC_ARROW = makeIntResource(32512);
+// const IDC_IBEAM = makeIntResource(32513);
+// const IDC_WAIT = makeIntResource(32514);
+// const IDC_CROSS = makeIntResource(32515);
+// const IDC_UPARROW = makeIntResource(32516);
+// const IDC_SIZENWSE = makeIntResource(32642);
+// const IDC_SIZENESW = makeIntResource(32643);
+// const IDC_SIZEWE = makeIntResource(32644);
+// const IDC_SIZENS = makeIntResource(32645);
+// const IDC_SIZEALL = makeIntResource(32646);
+// const IDC_NO = makeIntResource(32648);
+// const IDC_HAND = makeIntResource(32649);
+// const IDC_APPSTARTING = makeIntResource(32650);
+// const IDC_HELP = makeIntResource(32651);
+const IMAGE_CURSOR = @as(u32, 2);
+const LR_DEFAULTSIZE = @as(u32, 0x00000040);
+const LR_SHARED = @as(u32, 0x00008000);
 const MDT_EFFECTIVE_DPI = @as(i32, 0);
 const MF_BYCOMMAND = @as(u32, 0);
 const MF_DISABLED = @as(u32, 2);
@@ -64,6 +83,7 @@ const WM_QUIT = @as(u32, 18);
 const WM_TIMER = @as(u32, 275);
 const WM_MOUSEMOVE = @as(u32, 512);
 const WM_SIZING = @as(u32, 532);
+const WM_SETCURSOR = @as(u32, 32);
 
 const WMSZ_LEFT = @as(WPARAM, 1);
 const WMSZ_RIGHT = @as(WPARAM, 2);
@@ -230,11 +250,13 @@ extern "user32" fn EnableNonClientDpiScaling(hwnd: HWND) callconv(WINAPI) BOOL;
 extern "user32" fn GetClassInfoExW(hInstance: HINSTANCE, lpszClass: [*:0]const u16, lpwcx: *WNDCLASSEXW) callconv(WINAPI) BOOL;
 extern "user32" fn GetSystemMenu(hWnd: HWND, bRevert: BOOL) callconv(WINAPI) ?HMENU;
 extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: usize) callconv(WINAPI) BOOL;
+extern "user32" fn LoadImageW(hInst: ?HINSTANCE, name: [*:0]const u16, @"type": u32, cx: i32, cy: i32, fuLoad: u32) callconv(WINAPI) ?HANDLE;
 extern "user32" fn MonitorFromPoint(pt: POINT, dwFlags: u32) callconv(WINAPI) ?HMONITOR;
 extern "user32" fn MonitorFromWindow(hwnd: HWND, dwFlags: u32) ?HMONITOR;
 extern "user32" fn PeekMessageW(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: u32, wMsgFilterMax: u32, wRemoveMsg: u32) callconv(WINAPI) BOOL;
 extern "user32" fn PostQuitMessage(nExitCode: i32) callconv(WINAPI) void; // TODO: remove this
 extern "user32" fn RegisterClassExW(unnamedParam1: *const WNDCLASSEXW) callconv(WINAPI) ATOM;
+extern "user32" fn SetCursor(hCursor: ?HCURSOR) ?HCURSOR;
 extern "user32" fn SetThreadDpiAwarenessContext(dpiContext: isize) callconv(WINAPI) isize;
 extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: usize, uElapse: u32, lpTimerFunc: ?*anyopaque) callconv(WINAPI) usize;
 extern "user32" fn SetWindowPos(hWnd: HWND, hWndInsertAfter: ?HWND, X: i32, Y: i32, cx: i32, cy: i32, uFlags: u32) callconv(WINAPI) BOOL;
@@ -571,9 +593,10 @@ pub const Window = struct {
 
 // -- utility functions --
 
-inline fn atomCast(atom: ATOM) [*:0]const u16 {
+const atomCast = makeIntResource;
+inline fn makeIntResource(x: u16) [*:0]const u16 {
     @setRuntimeSafety(false);
-    return @ptrFromInt(atom);
+    return @ptrFromInt(x);
 }
 
 fn monitorDpi(hmonitor: HMONITOR) u32 {
@@ -697,6 +720,16 @@ fn windowProcMeta(
         WM_CLOSE => {
             try pushEvent(.{ .close_request = windowFromHwnd(hwnd).getWrapper() });
             return 0;
+        },
+
+        WM_SETCURSOR => {
+            const hit_test: u16 = @truncate(@as(usize, @bitCast(lparam)));
+            if (wparam == @intFromPtr(hwnd) and hit_test == HTCLIENT) {
+                _ = SetCursor(@ptrCast(LoadImageW(null, IDC_ARROW, IMAGE_CURSOR, 0, 0, LR_DEFAULTSIZE | LR_SHARED).?));
+                return TRUE;
+            } else {
+                return DefWindowProcW(hwnd, message, wparam, lparam);
+            }
         },
 
         WM_MOUSEMOVE => {
