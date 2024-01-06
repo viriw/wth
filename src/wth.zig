@@ -77,6 +77,8 @@ pub const Window = struct {
         resize_hook: ?Window.ResizeHook = null,
         size: @Vector(2, Window.Coordinate) = .{ 800, 608 },
         title: []const u8 = "a nice window",
+
+        win32_corner_rounding: enum(i32) { default, no, yes, yes_small } = .yes_small,
     };
 
     pub const Controls = packed struct {

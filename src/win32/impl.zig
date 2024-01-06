@@ -31,6 +31,7 @@ const WPARAM = usize;
 const CW_USEDEFAULT = @as(i32, -2147483648);
 const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE = @as(isize, -3);
 const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = @as(isize, -4);
+const DWMWA_WINDOW_CORNER_PREFERENCE = @as(u32, 33);
 const FALSE = @as(BOOL, 0);
 const GWL_EXSTYLE = @as(i32, -20);
 const GWL_STYLE = @as(i32, -16);
@@ -233,6 +234,9 @@ const WNDCLASSEXW = extern struct {
     lpszClassName: [*:0]const u16,
     hIconSm: ?HICON,
 };
+
+// dwmapi.dll imports
+extern "dwmapi" fn DwmSetWindowAttribute(hwnd: HWND, dwAttribute: u32, pvAttribute: *const anyopaque, cbAttribute: u32) callconv(WINAPI) HRESULT;
 
 // kernel32.dll imports
 extern "kernel32" fn ConvertFiberToThread() callconv(WINAPI) BOOL;
@@ -512,8 +516,11 @@ pub const Window = struct {
             return error.SystemResources;
         };
 
-        // needs an active hwnd to set this
+        // needs an active hwnd to set these
         window.refreshCloseButton();
+        if (global.win11_21h2_or_later) {
+            setWindowCornerPreference(window.hwnd.?, @intFromEnum(options.win32_corner_rounding));
+        }
 
         // belt and suspenders: let's get the default monitor (again)
         // on my machine CW_USEDEFAULT always goes to the primary, but...
@@ -638,6 +645,10 @@ fn monitorDpi(hmonitor: HMONITOR) u32 {
 // TODO: Would inlining this be better to not copy the Event?
 fn pushEvent(event: wth.Event) std.mem.Allocator.Error!void {
     try global.event_buffer.append(global.allocator, event);
+}
+
+inline fn setWindowCornerPreference(hwnd: HWND, x: i32) void {
+    assert(DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &x, @sizeOf(i32)) == S_OK);
 }
 
 inline fn utf8ToUtf16LeWithNullAssumeValid(allocator: std.mem.Allocator, utf8: []const u8) std.mem.Allocator.Error![:0]u16 {
