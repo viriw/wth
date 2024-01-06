@@ -556,10 +556,6 @@ pub const Window = struct {
         }
     }
 
-    inline fn getWrapper(window: *Window) *wth.Window {
-        return @fieldParentPtr(wth.Window, "impl", window);
-    }
-
     fn recalculateWindowRectangleAdjustment(window: *Window) void {
         var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
         assert(AdjustWindowRectExForDpi(&rect, window.style, FALSE, window.ex_style, window.dpi) != 0);
@@ -672,6 +668,12 @@ inline fn windowFromHwnd(hwnd: HWND) *Window {
     }
 }
 
+inline fn ww(window: *Window) if (__flags.multi_window) *wth.Window else void {
+    if (__flags.multi_window) {
+        return @fieldParentPtr(wth.Window, "impl", window);
+    }
+}
+
 // -- windowproc and friends --
 
 const fiber_proc_stack_size = 1024; // TODO: probably drop this
@@ -752,7 +754,7 @@ fn windowProcMeta(
         },
 
         WM_CLOSE => {
-            try pushEvent(.{ .close_request = windowFromHwnd(hwnd).getWrapper() });
+            try pushEvent(.{ .close_request = ww(windowFromHwnd(hwnd)) });
             return 0;
         },
 
@@ -769,7 +771,7 @@ fn windowProcMeta(
         WM_MOUSELEAVE => {
             const window = windowFromHwnd(hwnd);
             window.mouse_in_client_area = false;
-            try pushEvent(.{ .mouse_leave = .{ .position = window.mouse_position, .window = window.getWrapper() } });
+            try pushEvent(.{ .mouse_leave = .{ .position = window.mouse_position, .window = ww(window) } });
             return 0;
         },
         WM_MOUSEMOVE => {
@@ -783,7 +785,7 @@ fn windowProcMeta(
             };
             if (!window.mouse_in_client_area) {
                 // the mouse entered just now (there's no WM_MOUSEENTER)
-                try pushEvent(.{ .mouse_enter = .{ .position = position, .window = window.getWrapper() } });
+                try pushEvent(.{ .mouse_enter = .{ .position = position, .window = ww(window) } });
                 // begin tracking WM_MOUSELEAVE event
                 window.mouse_in_client_area = true;
                 var tme_info = TRACKMOUSEEVENT{
@@ -796,7 +798,7 @@ fn windowProcMeta(
             }
             if (position[0] != window.mouse_position[0] or position[1] != window.mouse_position[1]) {
                 window.mouse_position = position;
-                try pushEvent(.{ .mouse_move = .{ .position = window.mouse_position, .window = window.getWrapper() } });
+                try pushEvent(.{ .mouse_move = .{ .position = window.mouse_position, .window = ww(window) } });
             }
             return 0;
         },

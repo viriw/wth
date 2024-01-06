@@ -55,14 +55,14 @@ pub const Cursor = enum {
 };
 
 pub const Event = union(enum) {
-    close_request: *Window,
+    close_request: if (__flags.multi_window) *Window else void,
     mouse_enter: MouseMove,
     mouse_leave: MouseMove,
     mouse_move: MouseMove,
 
     pub const MouseMove = struct {
         position: @Vector(2, Window.Coordinate),
-        window: *Window,
+        window: if (__flags.multi_window) *Window else void,
     };
 };
 
