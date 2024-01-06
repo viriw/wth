@@ -784,7 +784,7 @@ fn windowProcMeta(
             // This doesn't work correctly in all situations, because of course it doesn't.
             // You can get some great message combos by clicking on the taskbar icon mid minimise animation, such as:
             // 1) WM_INACTIVE (HIWORD == 0) <- unfocused, not minimised (but, it is...)
-            // 2) WM_ACTIVATE (HIWORD != 0) <- focused, minimised (but it's not...)
+            // 2) WM_ACTIVATE (HIWORD != 0) <- focused, minimised (but, it's not...)
             // The keyboard focus message WM_{SET,KILL}FOCUS doesn't have this issue, so we just use that instead.
             return 0;
         },
