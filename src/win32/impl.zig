@@ -88,6 +88,9 @@ const WM_MOUSEMOVE = @as(u32, 512);
 const WM_SIZING = @as(u32, 532);
 const WM_SETCURSOR = @as(u32, 32);
 const WM_MOUSELEAVE = @as(u32, 675);
+const WM_ACTIVATE = @as(u32, 6);
+const WM_SETFOCUS = @as(u32, 7);
+const WM_KILLFOCUS = @as(u32, 8);
 
 const WMSZ_LEFT = @as(WPARAM, 1);
 const WMSZ_RIGHT = @as(WPARAM, 2);
@@ -770,6 +773,27 @@ fn windowProcMeta(
 
         WM_CLOSE => {
             try pushEvent(.{ .close_request = ww(windowFromHwnd(hwnd)) });
+            return 0;
+        },
+
+        WM_ACTIVATE => {
+            // MSDN says:
+            // > The high-order word specifies the minimised state of the window being activated or deactivated.
+            // > A nonzero value indicates the window is minimised.
+            //
+            // This doesn't work correctly in all situations, because of course it doesn't.
+            // You can get some great message combos by clicking on the taskbar icon mid minimise animation, such as:
+            // 1) WM_INACTIVE (HIWORD == 0) <- unfocused, not minimised (but, it is...)
+            // 2) WM_ACTIVATE (HIWORD != 0) <- focused, minimised (but it's not...)
+            // The keyboard focus message WM_{SET,KILL}FOCUS doesn't have this issue, so we just use that instead.
+            return 0;
+        },
+        WM_SETFOCUS => {
+            try pushEvent(.{ .focus = ww(windowFromHwnd(hwnd)) });
+            return 0;
+        },
+        WM_KILLFOCUS => {
+            try pushEvent(.{ .unfocus = ww(windowFromHwnd(hwnd)) });
             return 0;
         },
 

@@ -8,6 +8,9 @@
 // same with alt tabbing etc
 // this happens EVEN if its not a move so it emits Enter+Move and Move+Leave with the same coords if you spam alt tab
 // right now i don't emit move if it's the same coord as last time. maybe i should? see what X does and also just think about it
+//
+// == number two ==
+// we don't get unfocus() on Window.deinit() i think that's fairly normal
 
 const builtin = @import("builtin");
 const std = @import("std");
@@ -56,6 +59,10 @@ pub const Cursor = enum {
 
 pub const Event = union(enum) {
     close_request: if (__flags.multi_window) *Window else void,
+
+    focus: if (__flags.multi_window) *Window else void,
+    unfocus: if (__flags.multi_window) *Window else void,
+
     mouse_enter: MouseMove,
     mouse_leave: MouseMove,
     mouse_move: MouseMove,
