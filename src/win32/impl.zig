@@ -35,20 +35,20 @@ const FALSE = @as(BOOL, 0);
 const GWL_EXSTYLE = @as(i32, -20);
 const GWL_STYLE = @as(i32, -16);
 const HTCLIENT = @as(u32, 1);
-const IDC_ARROW = makeIntResource(32512);
-// const IDC_IBEAM = makeIntResource(32513);
-// const IDC_WAIT = makeIntResource(32514);
-// const IDC_CROSS = makeIntResource(32515);
-// const IDC_UPARROW = makeIntResource(32516);
-// const IDC_SIZENWSE = makeIntResource(32642);
-// const IDC_SIZENESW = makeIntResource(32643);
-// const IDC_SIZEWE = makeIntResource(32644);
-// const IDC_SIZENS = makeIntResource(32645);
-// const IDC_SIZEALL = makeIntResource(32646);
-// const IDC_NO = makeIntResource(32648);
-// const IDC_HAND = makeIntResource(32649);
-// const IDC_APPSTARTING = makeIntResource(32650);
-// const IDC_HELP = makeIntResource(32651);
+const IDC_APPSTARTING = 32650;
+const IDC_ARROW = 32512;
+const IDC_CROSS = 32515;
+const IDC_HAND = 32649;
+// const IDC_HELP = 32651;
+const IDC_IBEAM = 32513;
+// const IDC_NO = 32648;
+const IDC_SIZEALL = 32646;
+const IDC_SIZENESW = 32643;
+const IDC_SIZENS = 32645;
+const IDC_SIZENWSE = 32642;
+const IDC_SIZEWE = 32644;
+// const IDC_UPARROW = 32516;
+const IDC_WAIT = 32514;
 const IMAGE_CURSOR = @as(u32, 2);
 const LR_DEFAULTSIZE = @as(u32, 0x00000040);
 const LR_SHARED = @as(u32, 0x00008000);
@@ -391,6 +391,7 @@ pub inline fn sync() wth.SyncError!void {
 
 pub const Window = struct {
     class_atom: ATOM,
+    cursor: ?HCURSOR,
     dpi: u32,
     hwnd: ?HWND,
 
@@ -463,6 +464,7 @@ pub const Window = struct {
         };
         errdefer if (class_created_here) assert(UnregisterClassW(atomCast(window.class_atom), imageBase()) != 0);
 
+        window.cursor = if (options.cursor) |cursor| loadSystemCursor(cursor) else null;
         window.dpi = monitorDpi(MonitorFromPoint(.{ .x = 0, .y = 0 }, MONITOR_DEFAULTTOPRIMARY).?);
         window.resize_hook = options.resize_hook;
         window.size = options.size;
@@ -594,6 +596,23 @@ pub const Window = struct {
 // -- utility functions --
 
 const atomCast = makeIntResource;
+
+fn loadSystemCursor(cursor: wth.Cursor) HCURSOR {
+    return @ptrCast(LoadImageW(null, makeIntResource(switch (cursor) {
+        .Arrow => IDC_ARROW,
+        .Busy => IDC_WAIT,
+        .Cross => IDC_CROSS,
+        .Hand => IDC_HAND,
+        .IBeam => IDC_IBEAM,
+        .Move => IDC_SIZEALL,
+        .SizeNESW => IDC_SIZENESW,
+        .SizeNS => IDC_SIZENS,
+        .SizeNWSE => IDC_SIZENWSE,
+        .SizeWE => IDC_SIZEWE,
+        .Working => IDC_APPSTARTING,
+    }), IMAGE_CURSOR, 0, 0, LR_DEFAULTSIZE | LR_SHARED).?);
+}
+
 inline fn makeIntResource(x: u16) [*:0]const u16 {
     @setRuntimeSafety(false);
     return @ptrFromInt(x);
@@ -725,7 +744,7 @@ fn windowProcMeta(
         WM_SETCURSOR => {
             const hit_test: u16 = @truncate(@as(usize, @bitCast(lparam)));
             if (wparam == @intFromPtr(hwnd) and hit_test == HTCLIENT) {
-                _ = SetCursor(@ptrCast(LoadImageW(null, IDC_ARROW, IMAGE_CURSOR, 0, 0, LR_DEFAULTSIZE | LR_SHARED).?));
+                _ = SetCursor(windowFromHwnd(hwnd).cursor);
                 return TRUE;
             } else {
                 return DefWindowProcW(hwnd, message, wparam, lparam);

@@ -29,6 +29,20 @@ pub fn sync() SyncError!void {
     return try impl.sync();
 }
 
+pub const Cursor = enum {
+    Arrow,
+    Busy, // ⌛
+    Cross, // +
+    Hand, // 👆
+    IBeam, // I
+    Move, // ✥
+    SizeNESW, // ⤢
+    SizeNS, // ↕
+    SizeNWSE, // ⤡
+    SizeWE, // ↔
+    Working, // arrow+busy
+};
+
 pub const Event = union(enum) {
     close_request: *Window,
     mouse_move: MouseMove,
@@ -47,6 +61,7 @@ pub const Window = struct {
     pub const CreateOptions = struct {
         class_name: []const u8 = "wth",
         controls: Window.Controls = .{},
+        cursor: ?Cursor = Cursor.Arrow,
         resize_hook: ?Window.ResizeHook = null,
         size: @Vector(2, Window.Coordinate) = .{ 800, 608 },
         title: []const u8 = "a nice window",
