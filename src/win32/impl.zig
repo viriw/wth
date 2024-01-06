@@ -70,6 +70,7 @@ const SWP_NOSENDCHANGING = @as(u32, 1024);
 const SWP_NOSIZE = @as(u32, 1);
 const SWP_NOZORDER = @as(u32, 4);
 const SWP_SHOWWINDOW = @as(u32, 64);
+const TME_LEAVE = @as(u32, 2);
 const TRUE = @as(BOOL, 1);
 const WM_CLOSE = @as(u32, 16);
 const WM_DESTROY = @as(u32, 2);
@@ -84,6 +85,7 @@ const WM_TIMER = @as(u32, 275);
 const WM_MOUSEMOVE = @as(u32, 512);
 const WM_SIZING = @as(u32, 532);
 const WM_SETCURSOR = @as(u32, 32);
+const WM_MOUSELEAVE = @as(u32, 675);
 
 const WMSZ_LEFT = @as(WPARAM, 1);
 const WMSZ_RIGHT = @as(WPARAM, 2);
@@ -211,6 +213,12 @@ const RECT = extern struct {
     right: i32,
     bottom: i32,
 };
+const TRACKMOUSEEVENT = extern struct {
+    cbSize: u32,
+    dwFlags: u32,
+    hwndTrack: HWND,
+    dwHoverTime: u32,
+};
 const WNDCLASSEXW = extern struct {
     cbSize: u32,
     style: u32,
@@ -261,6 +269,7 @@ extern "user32" fn SetThreadDpiAwarenessContext(dpiContext: isize) callconv(WINA
 extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: usize, uElapse: u32, lpTimerFunc: ?*anyopaque) callconv(WINAPI) usize;
 extern "user32" fn SetWindowPos(hWnd: HWND, hWndInsertAfter: ?HWND, X: i32, Y: i32, cx: i32, cy: i32, uFlags: u32) callconv(WINAPI) BOOL;
 extern "user32" fn ShowWindow(hWnd: HWND, nCmdShow: i32) callconv(WINAPI) BOOL;
+extern "user32" fn TrackMouseEvent(lpEventTrack: *TRACKMOUSEEVENT) callconv(WINAPI) BOOL;
 extern "user32" fn TranslateMessage(lpMsg: *const MSG) callconv(WINAPI) BOOL;
 extern "user32" fn UnregisterClassW(lpClassName: [*:0]const u16, hInstance: HINSTANCE) callconv(WINAPI) BOOL;
 
@@ -403,6 +412,9 @@ pub const Window = struct {
     ex_style: u32,
     style: u32,
 
+    mouse_in_client_area: bool,
+    mouse_position: @Vector(2, wth.Window.Coordinate),
+
     // intrusive linked list time!
     next: if (__flags.multi_window) ?*Window else void,
 
@@ -473,6 +485,9 @@ pub const Window = struct {
         window.controls = options.controls;
         window.recalculateWindowStyle();
         window.recalculateWindowRectangleAdjustment();
+
+        // other state
+        window.mouse_in_client_area = false;
 
         sfa = sf.get(); // reset
         const title = try utf8ToUtf16LeWithNullAssumeValid(sfa, options.title);
@@ -751,15 +766,37 @@ fn windowProcMeta(
             }
         },
 
-        WM_MOUSEMOVE => {
+        WM_MOUSELEAVE => {
             const window = windowFromHwnd(hwnd);
-            const xy: u32 = @truncate(@as(usize, @bitCast(lparam)));
-            const x: i16 = @bitCast(@as(u16, @truncate(xy)));
-            const y: i16 = @bitCast(@as(u16, @truncate(xy >> 16)));
-            // getting mouse coordinates outside of the client area is possible with some window styles, even if it shouldn't do that
-            // the drop shadow etc counts as part of the window rectangle and can sometimes send events if it feels like. not documented
-            if (x >= 0 and x <= window.size[0] and y >= 0 and y <= window.size[1]) {
-                try pushEvent(.{ .mouse_move = .{ .x = @intCast(x), .y = @intCast(y), .window = window.getWrapper() } });
+            window.mouse_in_client_area = false;
+            try pushEvent(.{ .mouse_leave = .{ .position = window.mouse_position, .window = window.getWrapper() } });
+            return 0;
+        },
+        WM_MOUSEMOVE => {
+            // getting mouse coordinates outside of the client area is possible with some window styles, even if it shouldn't do that, so clamp it
+            // things like the drop shadow count as part of the window rectangle and can sometimes send events if it feels like, it's not documented
+            const window = windowFromHwnd(hwnd);
+            const dword: u32 = @truncate(@as(usize, @bitCast(lparam)));
+            const position = @Vector(2, wth.Window.Coordinate){
+                @intCast(std.math.clamp(@as(i16, @bitCast(@as(u16, @truncate(dword)))), 0, window.size[0])),
+                @intCast(std.math.clamp(@as(i16, @bitCast(@as(u16, @truncate(dword >> 16)))), 0, window.size[1])),
+            };
+            if (!window.mouse_in_client_area) {
+                // the mouse entered just now (there's no WM_MOUSEENTER)
+                try pushEvent(.{ .mouse_enter = .{ .position = position, .window = window.getWrapper() } });
+                // begin tracking WM_MOUSELEAVE event
+                window.mouse_in_client_area = true;
+                var tme_info = TRACKMOUSEEVENT{
+                    .cbSize = @sizeOf(TRACKMOUSEEVENT),
+                    .dwFlags = TME_LEAVE,
+                    .hwndTrack = hwnd,
+                    .dwHoverTime = 0,
+                };
+                assert(TrackMouseEvent(&tme_info) != 0);
+            }
+            if (position[0] != window.mouse_position[0] or position[1] != window.mouse_position[1]) {
+                window.mouse_position = position;
+                try pushEvent(.{ .mouse_move = .{ .position = window.mouse_position, .window = window.getWrapper() } });
             }
             return 0;
         },
