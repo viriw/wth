@@ -93,6 +93,14 @@ const WM_ACTIVATE = @as(u32, 6);
 const WM_SETFOCUS = @as(u32, 7);
 const WM_KILLFOCUS = @as(u32, 8);
 const WM_PAINT = @as(u32, 15);
+const WM_LBUTTONDOWN = @as(u32, 513);
+const WM_LBUTTONUP = @as(u32, 514);
+const WM_MBUTTONDOWN = @as(u32, 519);
+const WM_MBUTTONUP = @as(u32, 520);
+const WM_RBUTTONDOWN = @as(u32, 516);
+const WM_RBUTTONUP = @as(u32, 517);
+const WM_XBUTTONDOWN = @as(u32, 523);
+const WM_XBUTTONUP = @as(u32, 524);
 
 const WMSZ_LEFT = @as(WPARAM, 1);
 const WMSZ_RIGHT = @as(WPARAM, 2);
@@ -661,6 +669,22 @@ fn monitorDpi(hmonitor: HMONITOR) u32 {
     return xdpi;
 }
 
+fn osMouseEvent(hwnd: HWND, lparam: LPARAM, button: wth.MouseButton, what: enum { down, up }) std.mem.Allocator.Error!LRESULT {
+    const window = windowFromHwnd(hwnd);
+    const dword: u32 = @truncate(@as(usize, @bitCast(lparam)));
+    const position = @Vector(2, wth.Window.Coordinate){
+        @intCast(std.math.clamp(@as(i16, @bitCast(@as(u16, @truncate(dword)))), 0, window.size[0])),
+        @intCast(std.math.clamp(@as(i16, @bitCast(@as(u16, @truncate(dword >> 16)))), 0, window.size[1])),
+    };
+    window.mouse_position = position;
+    const payload = wth.Event.MouseClick{ .button = button, .position = position, .window = ww(window) };
+    try pushEvent(switch (what) {
+        .down => .{ .mouse_button_press_os = payload },
+        .up => .{ .mouse_button_release_os = payload },
+    });
+    return 0;
+}
+
 // TODO: Would inlining this be better to not copy the Event?
 fn pushEvent(event: wth.Event) std.mem.Allocator.Error!void {
     try global.event_buffer.append(global.allocator, event);
@@ -862,6 +886,23 @@ fn windowProcMeta(
             }
             return 0;
         },
+
+        WM_LBUTTONDOWN => return try osMouseEvent(hwnd, lparam, .left, .down),
+        WM_LBUTTONUP => return try osMouseEvent(hwnd, lparam, .left, .up),
+        WM_RBUTTONDOWN => return try osMouseEvent(hwnd, lparam, .right, .down),
+        WM_RBUTTONUP => return try osMouseEvent(hwnd, lparam, .right, .up),
+        WM_MBUTTONDOWN => return try osMouseEvent(hwnd, lparam, .middle, .down),
+        WM_MBUTTONUP => return try osMouseEvent(hwnd, lparam, .middle, .up),
+        WM_XBUTTONDOWN, WM_XBUTTONUP => return try osMouseEvent(
+            hwnd,
+            lparam,
+            switch ((wparam >> 16) & 0xFFFF) {
+                1 => wth.MouseButton.x1,
+                2 => wth.MouseButton.x2,
+                else => return 0, // nonsense
+            },
+            if (message == WM_XBUTTONDOWN) .down else .up,
+        ),
 
         WM_GETMINMAXINFO => {
             const window = windowFromHwnd(hwnd);

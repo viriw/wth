@@ -65,12 +65,29 @@ pub const Event = union(enum) {
 
     mouse_enter: MouseMove,
     mouse_leave: MouseMove,
+
+    mouse_button_press_os: MouseClick,
+    mouse_button_release_os: MouseClick,
     mouse_move_os: MouseMove,
 
+    pub const MouseClick = struct {
+        button: MouseButton,
+        position: @Vector(2, Window.Coordinate),
+        window: if (__flags.multi_window) *Window else void,
+    };
     pub const MouseMove = struct {
         position: @Vector(2, Window.Coordinate),
         window: if (__flags.multi_window) *Window else void,
     };
+};
+
+pub const MouseButton = enum {
+    left,
+    middle,
+    right,
+    // TODO: these are grossly windows-specific names
+    x1,
+    x2,
 };
 
 pub const Window = struct {
