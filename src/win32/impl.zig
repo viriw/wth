@@ -31,6 +31,7 @@ const WPARAM = usize;
 const CW_USEDEFAULT = @as(i32, -2147483648);
 const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE = @as(isize, -3);
 const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = @as(isize, -4);
+const DWMWA_USE_IMMERSIVE_DARK_MODE = @as(u32, 20);
 const DWMWA_WINDOW_CORNER_PREFERENCE = @as(u32, 33);
 const FALSE = @as(BOOL, 0);
 const GWL_EXSTYLE = @as(i32, -20);
@@ -519,6 +520,7 @@ pub const Window = struct {
         // needs an active hwnd to set these
         window.refreshCloseButton();
         if (global.win11_21h2_or_later) {
+            assert(DwmSetWindowAttribute(window.hwnd.?, DWMWA_USE_IMMERSIVE_DARK_MODE, &TRUE, @sizeOf(BOOL)) == S_OK);
             setWindowCornerPreference(window.hwnd.?, @intFromEnum(options.win32_corner_rounding));
         }
 

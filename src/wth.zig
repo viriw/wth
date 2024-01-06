@@ -78,7 +78,8 @@ pub const Window = struct {
         size: @Vector(2, Window.Coordinate) = .{ 800, 608 },
         title: []const u8 = "a nice window",
 
-        win32_corner_rounding: enum(i32) { default, no, yes, yes_small } = .yes_small,
+        // TODO: I think these should be behind builtin.target.os... maybe in a struct of its own for all win32-related ones
+        win32_corner_rounding: enum(i32) { default, no, yes, yes_small } = .default,
     };
 
     pub const Controls = packed struct {
