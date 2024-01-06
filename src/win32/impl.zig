@@ -791,7 +791,7 @@ fn windowProcMeta(
         },
         WM_MOUSEMOVE => {
             // getting mouse coordinates outside of the client area is possible with some window styles, even if it shouldn't do that, so clamp it
-            // things like the drop shadow count as part of the window rectangle and can sometimes send events if it feels like, it's not documented
+            // things like the drop shadow count as part of the window rectangle and can sometimes send messages if it feels like, it's not documented
             const window = windowFromHwnd(hwnd);
             const dword: u32 = @truncate(@as(usize, @bitCast(lparam)));
             const position = @Vector(2, wth.Window.Coordinate){
@@ -801,7 +801,7 @@ fn windowProcMeta(
             if (!window.mouse_in_client_area) {
                 // the mouse entered just now (there's no WM_MOUSEENTER)
                 try pushEvent(.{ .mouse_enter = .{ .position = position, .window = ww(window) } });
-                // begin tracking WM_MOUSELEAVE event
+                // begin tracking WM_MOUSELEAVE message
                 window.mouse_in_client_area = true;
                 var tme_info = TRACKMOUSEEVENT{
                     .cbSize = @sizeOf(TRACKMOUSEEVENT),
