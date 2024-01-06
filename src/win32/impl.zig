@@ -16,6 +16,7 @@ const BOOL = i32;
 const HANDLE = *anyopaque;
 const HBRUSH = *opaque {};
 const HCURSOR = *opaque {};
+const HDC = *opaque {};
 const HICON = *opaque {};
 const HINSTANCE = *opaque {};
 const HMENU = *opaque {};
@@ -91,6 +92,7 @@ const WM_MOUSELEAVE = @as(u32, 675);
 const WM_ACTIVATE = @as(u32, 6);
 const WM_SETFOCUS = @as(u32, 7);
 const WM_KILLFOCUS = @as(u32, 8);
+const WM_PAINT = @as(u32, 15);
 
 const WMSZ_LEFT = @as(WPARAM, 1);
 const WMSZ_RIGHT = @as(WPARAM, 2);
@@ -208,6 +210,14 @@ const MSG = extern struct {
     time: u32,
     pt: POINT,
 };
+const PAINTSTRUCT = extern struct {
+    hdc: HDC,
+    fErase: BOOL,
+    rcPaint: RECT,
+    fRestore: BOOL,
+    fIncUpdate: BOOL,
+    rgbReserved: [32]u8,
+};
 const POINT = extern struct {
     x: i32,
     y: i32,
@@ -257,12 +267,14 @@ extern "shcore" fn GetDpiForMonitor(hmonitor: HMONITOR, dpiType: i32, dpiX: *u32
 
 // user32.dll imports
 extern "user32" fn AdjustWindowRectExForDpi(lpRect: *RECT, dwStyle: u32, bMenu: BOOL, dwExStyle: u32, dpi: u32) callconv(WINAPI) BOOL;
+extern "user32" fn BeginPaint(hWnd: HWND, lpPaint: *PAINTSTRUCT) callconv(WINAPI) ?HDC;
 extern "user32" fn CreateWindowExW(dwExStyle: u32, lpClassName: [*:0]const u16, lpWindowName: [*:0]const u16, dwStyle: u32, X: i32, Y: i32, nWidth: i32, nHeight: i32, hWndParent: ?HWND, hMenu: ?HMENU, hInstance: HINSTANCE, lpParam: ?*anyopaque) callconv(WINAPI) ?HWND;
 extern "user32" fn DefWindowProcW(hWnd: HWND, Msg: u32, wParam: WPARAM, lParam: LPARAM) callconv(WINAPI) LRESULT;
 extern "user32" fn DestroyWindow(hWnd: HWND) callconv(WINAPI) BOOL;
 extern "user32" fn DispatchMessageW(lpMsg: *const MSG) callconv(WINAPI) LRESULT;
 extern "user32" fn EnableMenuItem(hMenu: HMENU, uIDEnableItem: u32, uEnable: u32) callconv(WINAPI) BOOL;
 extern "user32" fn EnableNonClientDpiScaling(hwnd: HWND) callconv(WINAPI) BOOL;
+extern "user32" fn EndPaint(hWnd: HWND, lpPaint: *const PAINTSTRUCT) callconv(WINAPI) BOOL;
 extern "user32" fn GetClassInfoExW(hInstance: HINSTANCE, lpszClass: [*:0]const u16, lpwcx: *WNDCLASSEXW) callconv(WINAPI) BOOL;
 extern "user32" fn GetSystemMenu(hWnd: HWND, bRevert: BOOL) callconv(WINAPI) ?HMENU;
 extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: usize) callconv(WINAPI) BOOL;
@@ -773,6 +785,15 @@ fn windowProcMeta(
 
         WM_CLOSE => {
             try pushEvent(.{ .close_request = ww(windowFromHwnd(hwnd)) });
+            return 0;
+        },
+
+        WM_PAINT => {
+            // the system will flood the queue with this message until we acquire the hdc to calm it down
+            // it doesn't matter if absolutely nothing is done, you need to do this or it will not stop
+            var paintstruct: PAINTSTRUCT = undefined;
+            assert(BeginPaint(hwnd, &paintstruct) != null);
+            assert(EndPaint(hwnd, &paintstruct) != 0);
             return 0;
         },
 
