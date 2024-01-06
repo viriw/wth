@@ -65,7 +65,7 @@ pub const Event = union(enum) {
 
     mouse_enter: MouseMove,
     mouse_leave: MouseMove,
-    mouse_move: MouseMove,
+    mouse_move_os: MouseMove,
 
     pub const MouseMove = struct {
         position: @Vector(2, Window.Coordinate),

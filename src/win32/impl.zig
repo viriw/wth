@@ -858,7 +858,7 @@ fn windowProcMeta(
             }
             if (position[0] != window.mouse_position[0] or position[1] != window.mouse_position[1]) {
                 window.mouse_position = position;
-                try pushEvent(.{ .mouse_move = .{ .position = window.mouse_position, .window = ww(window) } });
+                try pushEvent(.{ .mouse_move_os = .{ .position = window.mouse_position, .window = ww(window) } });
             }
             return 0;
         },
