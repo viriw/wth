@@ -338,7 +338,6 @@ pub fn init(allocator: std.mem.Allocator, _: wth.InitOptions) wth.InitError!void
     global.event_buffer = @TypeOf(global.event_buffer){};
     global.wm_quit_posted = false;
     global.window_proc_error = void{};
-
     global.window_head = null;
 
     var major: u32, var minor: u32, var build: u32 = .{ undefined, undefined, undefined };
@@ -378,7 +377,6 @@ pub fn deinit() void {
         DeleteFiber(global.message_fiber);
         assert(ConvertFiberToThread() != 0);
     } else {
-        // TODO: I forgot why I call this here on the single window case
         drainMessageQueue();
     }
     global.event_buffer.deinit(global.allocator);
@@ -553,11 +551,15 @@ pub const Window = struct {
             if (SetClassLongPtrW(window.hwnd.?, 0, GetClassLongPtrW(window.hwnd.?, 0) - 1) == 0) {
                 unregister_class = true;
             }
-            window.removeFromLinkedList();
         }
 
         // the window needs to exist for the above calls so we awkwardly destroy it in the middle
         assert(DestroyWindow(window.hwnd.?) != 0);
+
+        // this needs to be done once the window no longer exists to prevent windowFromHwnd crash
+        if (__flags.multi_window) {
+            window.removeFromLinkedList();
+        }
 
         // unregister if reference count hits 0 (or if !multi_window)
         if (unregister_class) {
