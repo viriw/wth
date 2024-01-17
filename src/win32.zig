@@ -271,6 +271,7 @@ pub fn deinit() void {
         process_messages();
     }
     global.event_buffer.deinit(global.allocator);
+    global.window_proc_error = void{};
     assert(UnregisterClassW(@ptrFromInt(global.window_class), image_base()) != 0);
 }
 
