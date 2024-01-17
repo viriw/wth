@@ -131,7 +131,7 @@ pub const Window = struct {
     }
 
     pub fn set_win32_corner_preference(window: *Window, preference: Win32_Corner_Preference) void {
-        if (builtin.target.os.tag == .windows) {
+        if (@hasDecl(impl.Window, "set_win32_corner_preference")) {
             window.impl.set_win32_corner_preference(preference);
         }
     }
