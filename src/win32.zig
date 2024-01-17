@@ -349,8 +349,8 @@ pub fn sync() wth.Sync_Error!void {
 pub const Win32_Corner_Preference = enum {
     default,
     do_not_round,
-    rounded,
-    rounded_small,
+    round,
+    round_small,
 };
 
 pub const Window = struct {
