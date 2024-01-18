@@ -74,6 +74,10 @@ pub const Event = union(enum) {
     mouse_enter: if (options.multi_window) *Window else void,
     mouse_leave: if (options.multi_window) *Window else void,
     mouse_move: Mouse_Move,
+    mouse_scroll_horizontal_left: if (options.multi_window) *Window else void,
+    mouse_scroll_horizontal_right: if (options.multi_window) *Window else void,
+    mouse_scroll_vertical_up: if (options.multi_window) *Window else void,
+    mouse_scroll_vertical_down: if (options.multi_window) *Window else void,
 
     pub const Mouse_Button_Press_Or_Release = struct {
         button: Mouse_Button,

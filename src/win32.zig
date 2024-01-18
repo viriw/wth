@@ -174,8 +174,10 @@ const WM_LBUTTONDOWN = @as(u32, 0x0201);
 const WM_LBUTTONUP = @as(u32, 0x0202);
 const WM_MBUTTONDOWN = @as(u32, 0x0207);
 const WM_MBUTTONUP = @as(u32, 0x0208);
+const WM_MOUSEHWHEEL = @as(u32, 0x020E);
 const WM_MOUSELEAVE = @as(u32, 0x02A3);
 const WM_MOUSEMOVE = @as(u32, 0x0200);
+const WM_MOUSEWHEEL = @as(u32, 0x020A);
 const WM_NCCREATE = @as(u32, 0x81);
 const WM_PAINT = @as(u32, 0x0F);
 const WM_QUIT = @as(u32, 0x12);
@@ -460,7 +462,7 @@ pub const Window = struct {
         }
 
         if (create_options.visible) {
-            set_visible_now(window, true);
+            rn_set_visible(window, true);
         }
     }
 
@@ -583,7 +585,7 @@ fn push_event(event: wth.Event) Allocator.Error!void {
     try global.event_buffer.append(global.allocator, event);
 }
 
-fn set_visible_now(window: *Window, visible: bool) void {
+fn rn_set_visible(window: *Window, visible: bool) void {
     const base_mask = SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER;
     const visible_bit = if (visible) SWP_SHOWWINDOW else SWP_HIDEWINDOW;
     assert(SetWindowPos(window.hwnd.?, null, 0, 0, 0, 0, base_mask | visible_bit) != 0); // TODO: maybe nosendchanging here?
@@ -849,6 +851,16 @@ fn window_proc_real(
             }
             return 0;
         },
+        WM_MOUSEHWHEEL, WM_MOUSEWHEEL => {
+            const window = window_from_hwnd(hwnd);
+            const delta: i16 = @bitCast(@as(u16, @truncate(wparam >> 16)));
+            if (delta == 0) return 0;
+            try push_event(if (message == WM_MOUSEHWHEEL)
+                (if (delta < 0) .{ .mouse_scroll_horizontal_left = ww(window) } else .{ .mouse_scroll_horizontal_right = ww(window) })
+            else
+                (if (delta > 0) .{ .mouse_scroll_vertical_up = ww(window) } else .{ .mouse_scroll_vertical_down = ww(window) }));
+            return 0;
+        },
 
         WM_LBUTTONDOWN => return try os_mouse_event(hwnd, .left, .down),
         WM_LBUTTONUP => return try os_mouse_event(hwnd, .left, .up),
@@ -888,7 +900,7 @@ fn window_proc_real(
             return 0;
         },
         WTH_WM_SETVISIBLE => {
-            set_visible_now(window_from_hwnd(hwnd), wparam != 0);
+            rn_set_visible(window_from_hwnd(hwnd), wparam != 0);
             return 0;
         },
         WTH_WM_SETSIZE => {
