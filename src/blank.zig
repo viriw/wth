@@ -56,6 +56,11 @@ pub const Window = struct {
         _ = controls;
     }
 
+    pub fn set_size(window: *Window, size: @Vector(2, wth.Window.Coordinate)) void {
+        _ = window;
+        _ = size;
+    }
+
     pub fn set_visible(window: *Window, visible: bool) void {
         _ = window;
         _ = visible;

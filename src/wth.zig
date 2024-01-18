@@ -134,6 +134,10 @@ pub const Window = struct {
         window.impl.set_controls(controls);
     }
 
+    pub fn set_size(window: *Window, size: @Vector(2, Window.Coordinate)) void {
+        window.impl.set_size(size);
+    }
+
     pub fn set_visible(window: *Window, visible: bool) void {
         window.impl.set_visible(visible);
     }
