@@ -485,7 +485,7 @@ pub const Window = struct {
         assert(PostMessageW(window.hwnd.?, WTH_WM_SETCONTROLS, @as(Window_Controls_Representation, @bitCast(controls)), 0) != 0);
     }
 
-    pub inline fn set_visible(window: *Window, visible: bool) void {
+    pub inline fn set_visible(window: *const Window, visible: bool) void {
         assert(PostMessageW(window.hwnd.?, WTH_WM_SETVISIBLE, @intFromBool(visible), 0) != 0);
     }
 
