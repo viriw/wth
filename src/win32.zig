@@ -90,6 +90,15 @@ const TRACKMOUSEEVENT = extern struct {
     hwndTrack: HWND,
     dwHoverTime: u32,
 };
+const WINDOWPOS = extern struct {
+    hwnd: HWND,
+    hwndInsertAfter: ?HWND,
+    x: i32,
+    y: i32,
+    cx: i32,
+    cy: i32,
+    flags: u32,
+};
 const WNDCLASSEXW = extern struct {
     cbSize: u32,
     style: u32,
@@ -111,6 +120,8 @@ const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = @as(isize, -4);
 const DWMWA_USE_IMMERSIVE_DARK_MODE = @as(u32, 20);
 const DWMWA_WINDOW_CORNER_PREFERENCE = @as(u32, 33);
 const FALSE = @as(BOOL, 0);
+const GWL_EXSTYLE = @as(i32, -20);
+const GWL_STYLE = @as(i32, -16);
 const HTCLIENT = @as(u32, 1);
 const IDC_APPSTARTING = @as(u16, 32650);
 const IDC_ARROW = @as(u16, 32512);
@@ -140,42 +151,45 @@ const S_OK = @as(HRESULT, 0);
 const SC_CLOSE = @as(u32, 0xF060);
 // const SW_HIDE = @as(i32, 0);
 const SW_SHOW = @as(i32, 5);
-// const SWP_FRAMECHANGED = @as(u32, 32);
+const SWP_FRAMECHANGED = @as(u32, 32);
+// const SWP_HIDEWINDOW = @as(u32, 128);
 const SWP_NOACTIVATE = @as(u32, 16);
 const SWP_NOMOVE = @as(u32, 2);
 // const SWP_NOSENDCHANGING = @as(u32, 1024);
 const SWP_NOSIZE = @as(u32, 1);
 const SWP_NOZORDER = @as(u32, 4);
-// const SWP_SHOWWINDOW = @as(u32, 64);
+const SWP_SHOWWINDOW = @as(u32, 64);
 const TME_LEAVE = @as(u32, 2);
 const TRUE = @as(BOOL, 1);
 const WINAPI = std.os.windows.WINAPI;
-const WM_ACTIVATE = @as(u32, 0x6);
+const WM_ACTIVATE = @as(u32, 0x06);
 const WM_CLOSE = @as(u32, 0x10);
-const WM_DESTROY = @as(u32, 0x2);
-const WM_DPICHANGED = @as(u32, 0x2E0);
-const WM_ENTERSIZEMOVE = @as(u32, 0x231);
-const WM_EXITSIZEMOVE = @as(u32, 0x232);
+const WM_DESTROY = @as(u32, 0x02);
+const WM_DPICHANGED = @as(u32, 0x02E0);
+const WM_ENTERSIZEMOVE = @as(u32, 0x0231);
+const WM_EXITSIZEMOVE = @as(u32, 0x0232);
 const WM_GETMINMAXINFO = @as(u32, 0x24);
-const WM_KILLFOCUS = @as(u32, 0x8);
-const WM_LBUTTONDOWN = @as(u32, 0x201);
-const WM_LBUTTONUP = @as(u32, 0x202);
-const WM_MBUTTONDOWN = @as(u32, 0x207);
-const WM_MBUTTONUP = @as(u32, 0x208);
-const WM_MOUSELEAVE = @as(u32, 0x2A3);
-const WM_MOUSEMOVE = @as(u32, 0x200);
+const WM_KILLFOCUS = @as(u32, 0x08);
+const WM_LBUTTONDOWN = @as(u32, 0x0201);
+const WM_LBUTTONUP = @as(u32, 0x0202);
+const WM_MBUTTONDOWN = @as(u32, 0x0207);
+const WM_MBUTTONUP = @as(u32, 0x0208);
+const WM_MOUSELEAVE = @as(u32, 0x02A3);
+const WM_MOUSEMOVE = @as(u32, 0x0200);
 const WM_NCCREATE = @as(u32, 0x81);
-const WM_PAINT = @as(u32, 0xF);
+const WM_PAINT = @as(u32, 0x0F);
 const WM_QUIT = @as(u32, 0x12);
-const WM_RBUTTONDOWN = @as(u32, 0x204);
-const WM_RBUTTONUP = @as(u32, 0x205);
+const WM_RBUTTONDOWN = @as(u32, 0x0204);
+const WM_RBUTTONUP = @as(u32, 0x0205);
 const WM_SETCURSOR = @as(u32, 0x20);
-const WM_SETFOCUS = @as(u32, 0x7);
-const WM_SIZE = @as(u32, 0x5);
-const WM_SIZING = @as(u32, 0x214);
-const WM_TIMER = @as(u32, 0x113);
-const WM_XBUTTONDOWN = @as(u32, 0x20B);
-const WM_XBUTTONUP = @as(u32, 0x20C);
+const WM_SETFOCUS = @as(u32, 0x07);
+const WM_SIZING = @as(u32, 0x0214);
+const WM_TIMER = @as(u32, 0x0113);
+const WM_USER = @as(u32, 0x0400);
+const WM_WINDOWPOSCHANGED = @as(u32, 0x0047);
+const WM_WINDOWPOSCHANGING = @as(u32, 0x0046);
+const WM_XBUTTONDOWN = @as(u32, 0x020B);
+const WM_XBUTTONUP = @as(u32, 0x020C);
 const WS_CAPTION = @as(u32, 0x00C00000);
 const WS_MAXIMIZEBOX = @as(u32, 0x00010000);
 const WS_MINIMIZEBOX = @as(u32, 0x00020000);
@@ -183,6 +197,7 @@ const WS_OVERLAPPED = @as(u32, 0x00000000);
 const WS_POPUP = @as(u32, 0x80000000);
 const WS_SYSMENU = @as(u32, 0x00080000);
 const WS_THICKFRAME = @as(u32, 0x00040000);
+const WS_VISIBLE = @as(u32, 0x10000000);
 
 extern "dwmapi" fn DwmSetWindowAttribute(hwnd: HWND, dwAttribute: u32, pvAttribute: *const anyopaque, cbAttribute: u32) callconv(WINAPI) HRESULT;
 extern "kernel32" fn ConvertFiberToThread() callconv(WINAPI) BOOL;
@@ -202,18 +217,18 @@ extern "user32" fn EnableMenuItem(hMenu: HMENU, uIDEnableItem: u32, uEnable: u32
 extern "user32" fn EndPaint(hWnd: HWND, lpPaint: *const PAINTSTRUCT) callconv(WINAPI) BOOL;
 extern "user32" fn GetClassInfoExW(hInstance: HINSTANCE, lpszClass: [*:0]const u16, lpwcx: *WNDCLASSEXW) callconv(WINAPI) BOOL;
 extern "user32" fn GetSystemMenu(hWnd: HWND, bRevert: BOOL) callconv(WINAPI) ?HMENU;
+extern "user32" fn GetWindowRect(hWnd: HWND, lpRect: *RECT) callconv(WINAPI) BOOL;
 extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: usize) callconv(WINAPI) BOOL;
 extern "user32" fn LoadImageW(hInst: ?HINSTANCE, name: [*:0]align(1) const u16, @"type": u32, cx: i32, cy: i32, fuLoad: u32) callconv(WINAPI) ?HANDLE;
 extern "user32" fn MonitorFromPoint(pt: POINT, dwFlags: u32) callconv(WINAPI) ?HMONITOR;
 extern "user32" fn MonitorFromWindow(hwnd: HWND, dwFlags: u32) ?HMONITOR;
 extern "user32" fn PeekMessageW(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: u32, wMsgFilterMax: u32, wRemoveMsg: u32) callconv(WINAPI) BOOL;
-extern "user32" fn PostQuitMessage(nExitCode: i32) callconv(WINAPI) void; // TODO: remove this
+extern "user32" fn PostMessageW(hWnd: ?HWND, Msg: u32, wParam: WPARAM, lParam: LPARAM) callconv(WINAPI) BOOL;
 extern "user32" fn RegisterClassExW(unnamedParam1: *const WNDCLASSEXW) callconv(WINAPI) ATOM;
 extern "user32" fn SetCursor(hCursor: ?HCURSOR) ?HCURSOR;
 extern "user32" fn SetProcessDpiAwarenessContext(dpiContext: isize) callconv(WINAPI) BOOL;
 extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: usize, uElapse: u32, lpTimerFunc: ?*anyopaque) callconv(WINAPI) usize;
 extern "user32" fn SetWindowPos(hWnd: HWND, hWndInsertAfter: ?HWND, X: i32, Y: i32, cx: i32, cy: i32, uFlags: u32) callconv(WINAPI) BOOL;
-extern "user32" fn ShowWindow(hWnd: HWND, nCmdShow: i32) callconv(WINAPI) BOOL;
 extern "user32" fn TrackMouseEvent(lpEventTrack: *TRACKMOUSEEVENT) callconv(WINAPI) BOOL;
 extern "user32" fn TranslateMessage(lpMsg: *const MSG) callconv(WINAPI) BOOL;
 extern "user32" fn UnregisterClassW(lpClassName: [*:0]align(1) const u16, hInstance: HINSTANCE) callconv(WINAPI) BOOL;
@@ -226,21 +241,20 @@ extern "user32" fn UnregisterClassW(lpClassName: [*:0]align(1) const u16, hInsta
 // Their solution for using those functions on 32-bit was to fucking #define SetClassLongPtrW SetClassLongW.
 // However, the signatures are incompatible. So they need to be fixed in practically every language binding.
 // It's also the case that SetClassLongPtrW takes a LONG_PTR but the "old value" is a ULONG_PTR. We ignore this.
-// const user32_extra = struct {
-//     // supplementary user32.dll imports
-//     pub extern "user32" fn GetClassLongPtrW(hWnd: HWND, nIndex: i32) callconv(WINAPI) usize;
-//     pub extern "user32" fn GetClassLongW(hWnd: HWND, nIndex: i32) callconv(WINAPI) u32;
-//     pub extern "user32" fn GetWindowLongPtrW(hWnd: HWND, nIndex: i32) callconv(WINAPI) usize;
-//     pub extern "user32" fn GetWindowLongW(hWnd: HWND, nIndex: i32) callconv(WINAPI) u32;
-//     pub extern "user32" fn SetClassLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: usize) callconv(WINAPI) usize;
-//     pub extern "user32" fn SetClassLongW(hWnd: HWND, nIndex: i32, dwNewLong: u32) callconv(WINAPI) u32;
-//     pub extern "user32" fn SetWindowLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: usize) callconv(WINAPI) usize;
-//     pub extern "user32" fn SetWindowLongW(hWnd: HWND, nIndex: i32, dwNewLong: u32) callconv(WINAPI) u32;
-// };
+const user32_extra = struct {
+    // pub extern "user32" fn GetClassLongPtrW(hWnd: HWND, nIndex: i32) callconv(WINAPI) usize;
+    // pub extern "user32" fn GetClassLongW(hWnd: HWND, nIndex: i32) callconv(WINAPI) u32;
+    // pub extern "user32" fn GetWindowLongPtrW(hWnd: HWND, nIndex: i32) callconv(WINAPI) usize;
+    // pub extern "user32" fn GetWindowLongW(hWnd: HWND, nIndex: i32) callconv(WINAPI) u32;
+    // pub extern "user32" fn SetClassLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: usize) callconv(WINAPI) usize;
+    // pub extern "user32" fn SetClassLongW(hWnd: HWND, nIndex: i32, dwNewLong: u32) callconv(WINAPI) u32;
+    pub extern "user32" fn SetWindowLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: usize) callconv(WINAPI) usize;
+    pub extern "user32" fn SetWindowLongW(hWnd: HWND, nIndex: i32, dwNewLong: u32) callconv(WINAPI) u32;
+};
 // const GetClassLongPtrW = if (@sizeOf(*anyopaque) > 4) user32_extra.GetClassLongPtrW else user32_extra.GetClassLongW;
 // const GetWindowLongPtrW = if (@sizeOf(*anyopaque) > 4) user32_extra.GetWindowLongPtrW else user32_extra.GetWindowLongW;
 // const SetClassLongPtrW = if (@sizeOf(*anyopaque) > 4) user32_extra.SetClassLongPtrW else user32_extra.SetClassLongW;
-// const SetWindowLongPtrW = if (@sizeOf(*anyopaque) > 4) user32_extra.SetWindowLongPtrW else user32_extra.SetWindowLongW;
+const SetWindowLongPtrW = if (@sizeOf(*anyopaque) > 4) user32_extra.SetWindowLongPtrW else user32_extra.SetWindowLongW;
 
 // ---
 
@@ -361,12 +375,14 @@ pub const Window = struct {
     hwnd: ?HWND,
     is_focused: bool,
     is_mouse_in_client_area: bool,
+    is_visible: bool,
     mouse_position: @Vector(2, wth.Window.Coordinate),
     next: if (options.multi_window) ?*Window else void,
+    position: @Vector(2, i32),
     size: @Vector(2, wth.Window.Coordinate),
     style: u32,
     style_ex: u32,
-    wra: @Vector(2, wth.Window.Coordinate),
+    wra: RECT,
 
     pub fn emplace(
         window: *Window,
@@ -382,7 +398,9 @@ pub const Window = struct {
         window.hwnd = null;
         window.is_focused = false;
         window.is_mouse_in_client_area = false;
+        window.is_visible = false;
         window.mouse_position = .{ 0, 0 };
+        window.position = .{ 0, 0 };
         window.size = create_options.size;
 
         // initialises .style{,_ex} and .wra, must be called in this order
@@ -394,7 +412,7 @@ pub const Window = struct {
         const title = try utf8_to_utf16le_z(sfa, create_options.title);
         defer sfa.free(title);
 
-        const width, const height = window.size + window.wra;
+        var width, var height = window.size + wra_rl_bt(window.wra);
         window.hwnd = CreateWindowExW(
             window.style_ex,
             @ptrFromInt(global.window_class),
@@ -415,11 +433,6 @@ pub const Window = struct {
             return error.SystemResources;
         };
 
-        window.refresh_system_menu();
-        window.set_win32_corner_preference(create_options.win32_corner_preference);
-        if (global.win11_21h2_or_later) {
-            assert(DwmSetWindowAttribute(window.hwnd.?, DWMWA_USE_IMMERSIVE_DARK_MODE, &TRUE, @sizeOf(BOOL)) == S_OK);
-        }
         {
             // belt and suspenders: let's get the default monitor (again)
             // on my machine CW_USEDEFAULT always goes to the primary, but...
@@ -427,12 +440,27 @@ pub const Window = struct {
             if (dpi != window.dpi) {
                 window.dpi = dpi;
                 window.refresh_wra();
-                width, height = window.size + window.wra;
+                width, height = window.size + wra_rl_bt(window.wra);
                 assert(SetWindowPos(window.hwnd.?, null, 0, 0, width, height, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER) != 0);
             }
+
+            var rect: RECT = undefined;
+            assert(GetWindowRect(window.hwnd.?, &rect) != 0);
+            window.position = .{ @intCast(rect.left), @intCast(rect.top) };
+            window.size = wra_rl_bt(rect) - wra_rl_bt(window.wra);
+            // TODO: push event?
         }
 
-        assert(ShowWindow(window.hwnd.?, SW_SHOW) == 0);
+        window.refresh_system_menu();
+        window.set_win32_corner_preference(create_options.win32_corner_preference);
+        if (global.win11_21h2_or_later) {
+            assert(DwmSetWindowAttribute(window.hwnd.?, DWMWA_USE_IMMERSIVE_DARK_MODE, &TRUE, @sizeOf(BOOL)) == S_OK);
+        }
+
+        window.is_visible = true;
+        window.refresh_styles();
+        // TODO: maybe nosendchanging here?
+        assert(SetWindowPos(window.hwnd.?, null, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW) != 0);
     }
 
     pub fn deinit(window: *Window) void {
@@ -450,6 +478,15 @@ pub const Window = struct {
                 unreachable;
             }
         }
+    }
+
+    pub inline fn set_controls(window: *const Window, controls: wth.Window.Controls) void {
+        assert(PostMessageW(
+            window.hwnd.?,
+            WTH_WM_SETCONTROLS,
+            @as(Window_Controls_Representation, @bitCast(controls)),
+            0,
+        ) != 0);
     }
 
     pub inline fn set_win32_corner_preference(window: *const Window, preference: Win32_Corner_Preference) void {
@@ -475,6 +512,7 @@ pub const Window = struct {
         window.style |= WS_MINIMIZEBOX * @intFromBool(window.controls.minimise);
         window.style |= WS_MAXIMIZEBOX * @intFromBool(window.controls.maximise);
         window.style |= WS_THICKFRAME * @intFromBool(window.controls.resize);
+        window.style |= WS_VISIBLE * @intFromBool(window.is_visible);
     }
 
     fn refresh_system_menu(window: *const Window) void {
@@ -483,10 +521,14 @@ pub const Window = struct {
         _ = EnableMenuItem(GetSystemMenu(window.hwnd.?, FALSE).?, SC_CLOSE, MF_BYCOMMAND | state);
     }
 
-    fn refresh_wra(window: *Window) void {
-        var rect = RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
-        assert(AdjustWindowRectExForDpi(&rect, window.style, FALSE, window.style_ex, window.dpi) != 0);
-        window.wra = .{ @intCast(rect.right - rect.left), @intCast(rect.bottom - rect.top) };
+    inline fn refresh_wra(window: *Window) void {
+        window.wra = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
+        assert(AdjustWindowRectExForDpi(&window.wra, window.style, FALSE, window.style_ex, window.dpi) != 0);
+    }
+
+    fn write_styles(window: *const Window) void {
+        _ = SetWindowLongPtrW(window.hwnd.?, GWL_STYLE, window.style);
+        _ = SetWindowLongPtrW(window.hwnd.?, GWL_EXSTYLE, window.style_ex);
     }
 };
 
@@ -573,6 +615,18 @@ fn window_from_hwnd(hwnd: HWND) *Window {
     }
 }
 
+inline fn wra_rl_bt(rect: RECT) @Vector(2, wth.Window.Coordinate) {
+    return .{ @intCast(rect.right - rect.left), @intCast(rect.bottom - rect.top) };
+}
+
+// helper for a SetWindowPos transition maintaining client area position for different window rectangle adjustments
+fn wra_xy_transition(old_wra: RECT, old_position: @Vector(2, i32), new_wra: RECT) @Vector(2, i32) { // -> new_position
+    return .{
+        (old_position[0] - old_wra.left) + new_wra.left,
+        (old_position[1] - old_wra.top) + new_wra.top,
+    };
+}
+
 inline fn ww(window: *Window) if (options.multi_window) *wth.Window else void {
     if (options.multi_window) {
         return @fieldParentPtr(wth.Window, "impl", window);
@@ -580,6 +634,8 @@ inline fn ww(window: *Window) if (options.multi_window) *wth.Window else void {
 }
 
 // ---
+
+const WTH_WM_SETCONTROLS = WM_USER + 0;
 
 fn message_fiber_proc(_: ?*anyopaque) callconv(WINAPI) void {
     while (true) {
@@ -622,6 +678,10 @@ fn window_proc(
 // ---
 
 const fiber_timer_id = 1; // must be >= 1
+const Window_Controls_Representation = @Type(.{ .Int = .{
+    .signedness = .unsigned,
+    .bits = @bitSizeOf(wth.Window.Controls),
+} });
 const Window_Proc_Error = Allocator.Error;
 
 fn window_proc_real(
@@ -675,21 +735,24 @@ fn window_proc_real(
         WM_GETMINMAXINFO => {
             const window = window_from_hwnd(hwnd);
             const mmi: *MINMAXINFO = @ptrFromInt(lparam);
-            mmi.ptMinTrackSize = .{ .x = 1 + window.wra[0], .y = 1 + window.wra[1] };
+            const min = wra_rl_bt(window.wra);
+            mmi.ptMinTrackSize = .{ .x = min[0] + 1, .y = min[1] + 1 };
             return 0;
         },
 
         WM_DPICHANGED => {
             const window = window_from_hwnd(hwnd);
+            const old_wra = window.wra;
             window.dpi = @truncate(wparam & 0xFFFF); // LOWORD is X DPI
             window.refresh_wra();
-            const width, const height = window.size + window.wra;
-            const suggestion_rect: *const RECT = @ptrFromInt(lparam);
+            window.position = wra_xy_transition(old_wra, window.position, window.wra);
+            const x, const y = window.position;
+            const width, const height = window.size + wra_rl_bt(window.wra);
             assert(SetWindowPos(
                 window.hwnd.?,
                 null,
-                suggestion_rect.left,
-                suggestion_rect.top,
+                x,
+                y,
                 width,
                 height,
                 SWP_NOACTIVATE | SWP_NOZORDER,
@@ -725,10 +788,28 @@ fn window_proc_real(
             return 0;
         },
 
-        WM_SIZE => {
+        WM_WINDOWPOSCHANGED => {
+            // n.b. handling this message without calling DefWindowProc means no WM_{MOVE,SIZE} sent
             const window = window_from_hwnd(hwnd);
-            const xy: u32 = @truncate(lparam);
-            window.size = .{ @truncate(xy), @truncate(xy >> 16) };
+            const info: *const WINDOWPOS = @ptrFromInt(lparam);
+            if (info.flags & SWP_NOMOVE == 0) {
+                window.position = .{ info.x, info.y };
+            }
+            if (info.flags & SWP_NOSIZE == 0) {
+                window.size = .{ @intCast(info.cx), @intCast(info.cy) };
+                window.size -= wra_rl_bt(window.wra);
+            }
+            return 0;
+        },
+        WM_WINDOWPOSCHANGING => {
+            // For a window with the WS_OVERLAPPED or WS_THICKFRAME style,
+            // the DefWindowProc function sends the WM_GETMINMAXINFO message to the window.
+            // This is done to validate the new size and position of the window and to enforce
+            // the CS_BYTEALIGNCLIENT and CS_BYTEALIGNWINDOW client styles.
+            // By not passing the WM_WINDOWPOSCHANGING message to the DefWindowProc function,
+            // an application can override these defaults.
+            // TODO: ^ What the fuck does this mean? ^
+
             return 0;
         },
 
@@ -781,6 +862,28 @@ fn window_proc_real(
             },
             if (message == WM_XBUTTONDOWN) .down else .up,
         ),
+
+        WTH_WM_SETCONTROLS => {
+            const window = window_from_hwnd(hwnd);
+            const old_wra = window.wra;
+            window.controls = @bitCast(@as(Window_Controls_Representation, @truncate(wparam)));
+            window.refresh_styles();
+            window.refresh_wra();
+            window.write_styles();
+            window.position = wra_xy_transition(old_wra, window.position, window.wra);
+            const x, const y = window.position;
+            const width, const height = window.size + wra_rl_bt(window.wra);
+            assert(SetWindowPos(
+                hwnd,
+                null,
+                x,
+                y,
+                width,
+                height,
+                SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER,
+            ) != 0);
+            return 0;
+        },
 
         else => return DefWindowProcW(hwnd, message, wparam, lparam),
     }

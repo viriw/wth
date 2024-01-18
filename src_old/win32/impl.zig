@@ -1,6 +1,3 @@
-const GWL_EXSTYLE = @as(i32, -20);
-const GWL_STYLE = @as(i32, -16);
-
 const WMSZ_LEFT = @as(WPARAM, 1);
 const WMSZ_RIGHT = @as(WPARAM, 2);
 const WMSZ_TOP = @as(WPARAM, 3);
