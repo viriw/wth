@@ -104,6 +104,7 @@ pub const Window = struct {
         cursor: Cursor = .arrow,
         size: @Vector(2, Window.Coordinate) = .{ 800, 608 },
         title: []const u8 = "hi :3",
+        visible: bool = true,
         win32_corner_preference: Win32_Corner_Preference = .default,
     };
     pub const Controls = packed struct {
@@ -132,6 +133,10 @@ pub const Window = struct {
 
     pub fn set_controls(window: *Window, controls: Controls) void {
         window.impl.set_controls(controls);
+    }
+
+    pub fn set_visible(window: *Window, visible: bool) void {
+        window.impl.set_visible(visible);
     }
 
     pub fn set_win32_corner_preference(window: *Window, preference: Win32_Corner_Preference) void {

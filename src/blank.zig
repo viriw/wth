@@ -55,4 +55,9 @@ pub const Window = struct {
         _ = window;
         _ = controls;
     }
+
+    pub fn set_visible(window: *Window, visible: bool) void {
+        _ = window;
+        _ = visible;
+    }
 };
