@@ -130,6 +130,10 @@ pub const Window = struct {
         window.impl.deinit();
     }
 
+    pub fn set_controls(window: *Window, controls: Controls) void {
+        window.impl.set_controls(controls);
+    }
+
     pub fn set_win32_corner_preference(window: *Window, preference: Win32_Corner_Preference) void {
         if (@hasDecl(impl.Window, "set_win32_corner_preference")) {
             window.impl.set_win32_corner_preference(preference);

@@ -50,4 +50,9 @@ pub const Window = struct {
     pub fn deinit(window: *Window) void {
         _ = window;
     }
+
+    pub fn set_controls(window: *Window, controls: wth.Window.Controls) void {
+        _ = window;
+        _ = controls;
+    }
 };
