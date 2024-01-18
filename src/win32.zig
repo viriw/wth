@@ -431,6 +431,10 @@ pub const Window = struct {
             return error.SystemResources;
         };
 
+        // to undo unsetting WS_VISIBLE for CreateWindowExW
+        // it should be on or SetWindowPos will misbehave
+        window.write_styles();
+
         {
             // belt and suspenders: let's get the default monitor (again)
             // on my machine CW_USEDEFAULT always goes to the primary, but...
@@ -456,8 +460,6 @@ pub const Window = struct {
         }
 
         if (create_options.visible) {
-            window.style |= WS_VISIBLE;
-            window.write_styles();
             set_visible_now(window, true);
         }
     }
