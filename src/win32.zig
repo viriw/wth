@@ -485,6 +485,10 @@ pub const Window = struct {
         assert(PostMessageW(window.hwnd.?, WTH_WM_SETCONTROLS, @as(Window_Controls_Representation, @bitCast(controls)), 0) != 0);
     }
 
+    pub inline fn set_size(window: *const Window, size: @Vector(2, wth.Window.Coordinate)) void {
+        assert(PostMessageW(window.hwnd.?, WTH_WM_SETSIZE, size[0], size[1]) != 0);
+    }
+
     pub inline fn set_visible(window: *const Window, visible: bool) void {
         assert(PostMessageW(window.hwnd.?, WTH_WM_SETVISIBLE, @intFromBool(visible), 0) != 0);
     }
@@ -682,6 +686,7 @@ const Window_Proc_Error = Allocator.Error;
 
 const WTH_WM_SETCONTROLS = WM_USER + 0;
 const WTH_WM_SETVISIBLE = WM_USER + 1;
+const WTH_WM_SETSIZE = WM_USER + 2;
 
 fn window_proc_real(
     hwnd: HWND,
@@ -884,6 +889,21 @@ fn window_proc_real(
         },
         WTH_WM_SETVISIBLE => {
             set_visible_now(window_from_hwnd(hwnd), wparam != 0);
+            return 0;
+        },
+        WTH_WM_SETSIZE => {
+            const window = window_from_hwnd(hwnd);
+            window.size = .{ @truncate(wparam), @truncate(lparam) };
+            const width, const height = window.size + wra_rl_bt(window.wra);
+            assert(SetWindowPos(
+                hwnd,
+                null,
+                0,
+                0,
+                width,
+                height,
+                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER,
+            ) != 0);
             return 0;
         },
 
