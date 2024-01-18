@@ -152,7 +152,7 @@ const SC_CLOSE = @as(u32, 0xF060);
 // const SW_HIDE = @as(i32, 0);
 const SW_SHOW = @as(i32, 5);
 const SWP_FRAMECHANGED = @as(u32, 32);
-// const SWP_HIDEWINDOW = @as(u32, 128);
+const SWP_HIDEWINDOW = @as(u32, 128);
 const SWP_NOACTIVATE = @as(u32, 16);
 const SWP_NOMOVE = @as(u32, 2);
 // const SWP_NOSENDCHANGING = @as(u32, 1024);
@@ -375,7 +375,6 @@ pub const Window = struct {
     hwnd: ?HWND,
     is_focused: bool,
     is_mouse_in_client_area: bool,
-    is_visible: bool,
     mouse_position: @Vector(2, wth.Window.Coordinate),
     next: if (options.multi_window) ?*Window else void,
     position: @Vector(2, i32),
@@ -398,7 +397,6 @@ pub const Window = struct {
         window.hwnd = null;
         window.is_focused = false;
         window.is_mouse_in_client_area = false;
-        window.is_visible = false;
         window.mouse_position = .{ 0, 0 };
         window.position = .{ 0, 0 };
         window.size = create_options.size;
@@ -417,7 +415,7 @@ pub const Window = struct {
             window.style_ex,
             @ptrFromInt(global.window_class),
             title.ptr,
-            window.style,
+            window.style & ~WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             width,
@@ -457,10 +455,11 @@ pub const Window = struct {
             assert(DwmSetWindowAttribute(window.hwnd.?, DWMWA_USE_IMMERSIVE_DARK_MODE, &TRUE, @sizeOf(BOOL)) == S_OK);
         }
 
-        window.is_visible = true;
-        window.refresh_styles();
-        // TODO: maybe nosendchanging here?
-        assert(SetWindowPos(window.hwnd.?, null, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW) != 0);
+        if (create_options.visible) {
+            window.style |= WS_VISIBLE;
+            window.write_styles();
+            set_visible_now(window, true);
+        }
     }
 
     pub fn deinit(window: *Window) void {
@@ -481,12 +480,11 @@ pub const Window = struct {
     }
 
     pub inline fn set_controls(window: *const Window, controls: wth.Window.Controls) void {
-        assert(PostMessageW(
-            window.hwnd.?,
-            WTH_WM_SETCONTROLS,
-            @as(Window_Controls_Representation, @bitCast(controls)),
-            0,
-        ) != 0);
+        assert(PostMessageW(window.hwnd.?, WTH_WM_SETCONTROLS, @as(Window_Controls_Representation, @bitCast(controls)), 0) != 0);
+    }
+
+    pub inline fn set_visible(window: *Window, visible: bool) void {
+        assert(PostMessageW(window.hwnd.?, WTH_WM_SETVISIBLE, @intFromBool(visible), 0) != 0);
     }
 
     pub inline fn set_win32_corner_preference(window: *const Window, preference: Win32_Corner_Preference) void {
@@ -502,7 +500,7 @@ pub const Window = struct {
     // ---
 
     fn refresh_styles(window: *Window) void {
-        window.style = WS_OVERLAPPED;
+        window.style = WS_OVERLAPPED | WS_VISIBLE;
         window.style_ex = 0;
         if (window.controls.border) {
             window.style |= WS_CAPTION | WS_SYSMENU;
@@ -512,7 +510,6 @@ pub const Window = struct {
         window.style |= WS_MINIMIZEBOX * @intFromBool(window.controls.minimise);
         window.style |= WS_MAXIMIZEBOX * @intFromBool(window.controls.maximise);
         window.style |= WS_THICKFRAME * @intFromBool(window.controls.resize);
-        window.style |= WS_VISIBLE * @intFromBool(window.is_visible);
     }
 
     fn refresh_system_menu(window: *const Window) void {
@@ -587,6 +584,12 @@ fn push_event(event: wth.Event) Allocator.Error!void {
     try global.event_buffer.append(global.allocator, event);
 }
 
+fn set_visible_now(window: *Window, visible: bool) void {
+    const base_mask = SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER;
+    const visible_bit = if (visible) SWP_SHOWWINDOW else SWP_HIDEWINDOW;
+    assert(SetWindowPos(window.hwnd.?, null, 0, 0, 0, 0, base_mask | visible_bit) != 0); // TODO: maybe nosendchanging here?
+}
+
 inline fn utf8_to_utf16le_z(allocator: Allocator, utf8: []const u8) Allocator.Error![:0]u16 {
     return std.unicode.utf8ToUtf16LeWithNull(allocator, utf8) catch |err| switch (err) {
         error.InvalidUtf8 => unreachable,
@@ -635,8 +638,6 @@ inline fn ww(window: *Window) if (options.multi_window) *wth.Window else void {
 
 // ---
 
-const WTH_WM_SETCONTROLS = WM_USER + 0;
-
 fn message_fiber_proc(_: ?*anyopaque) callconv(WINAPI) void {
     while (true) {
         process_messages();
@@ -683,6 +684,9 @@ const Window_Controls_Representation = @Type(.{ .Int = .{
     .bits = @bitSizeOf(wth.Window.Controls),
 } });
 const Window_Proc_Error = Allocator.Error;
+
+const WTH_WM_SETCONTROLS = WM_USER + 0;
+const WTH_WM_SETVISIBLE = WM_USER + 1;
 
 fn window_proc_real(
     hwnd: HWND,
@@ -882,6 +886,10 @@ fn window_proc_real(
                 height,
                 SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER,
             ) != 0);
+            return 0;
+        },
+        WTH_WM_SETVISIBLE => {
+            set_visible_now(window_from_hwnd(hwnd), wparam != 0);
             return 0;
         },
 
