@@ -561,22 +561,15 @@ fn monitor_dpi(hmonitor: HMONITOR) u32 {
     return xdpi;
 }
 
-fn os_mouse_event(hwnd: HWND, lparam: LPARAM, button: wth.Mouse_Button, what: enum { down, up }) Allocator.Error!LRESULT {
+fn os_mouse_event(hwnd: HWND, button: wth.Mouse_Button, what: enum { down, up }) Allocator.Error!LRESULT {
     const window = window_from_hwnd(hwnd);
-    const dword: u32 = @truncate(@as(usize, @bitCast(lparam)));
-    const position = @Vector(2, wth.Window.Coordinate){
-        @intCast(std.math.clamp(@as(i16, @bitCast(@as(u16, @truncate(dword)))), 0, window.size[0])),
-        @intCast(std.math.clamp(@as(i16, @bitCast(@as(u16, @truncate(dword >> 16)))), 0, window.size[1])),
-    };
-    window.mouse_position = position;
-    const payload = wth.Event.Mouse_Button_OS{
+    const payload = wth.Event.Mouse_Button_Press_Or_Release{
         .button = button,
-        .position = position,
         .window = ww(window),
     };
     try push_event(switch (what) {
-        .down => .{ .mouse_button_press_os = payload },
-        .up => .{ .mouse_button_release_os = payload },
+        .down => .{ .mouse_button_press = payload },
+        .up => .{ .mouse_button_release = payload },
     });
     return 0;
 }
@@ -822,7 +815,7 @@ fn window_proc_real(
         WM_MOUSELEAVE => {
             const window = window_from_hwnd(hwnd);
             window.is_mouse_in_client_area = false;
-            try push_event(.{ .mouse_leave_os = .{ .position = window.mouse_position, .window = ww(window) } });
+            try push_event(.{ .mouse_leave = ww(window) });
             return 0;
         },
         WM_MOUSEMOVE => {
@@ -836,7 +829,7 @@ fn window_proc_real(
             };
             if (!window.is_mouse_in_client_area) {
                 window.is_mouse_in_client_area = true;
-                try push_event(.{ .mouse_enter_os = .{ .position = position, .window = ww(window) } });
+                try push_event(.{ .mouse_enter = ww(window) });
                 var tme_info = TRACKMOUSEEVENT{
                     .cbSize = @sizeOf(TRACKMOUSEEVENT),
                     .dwFlags = TME_LEAVE,
@@ -847,20 +840,19 @@ fn window_proc_real(
             }
             if (position[0] != window.mouse_position[0] or position[1] != window.mouse_position[1]) {
                 window.mouse_position = position;
-                try push_event(.{ .mouse_move_os = .{ .position = window.mouse_position, .window = ww(window) } });
+                try push_event(.{ .mouse_move = .{ .position = window.mouse_position, .window = ww(window) } });
             }
             return 0;
         },
 
-        WM_LBUTTONDOWN => return try os_mouse_event(hwnd, lparam, .left, .down),
-        WM_LBUTTONUP => return try os_mouse_event(hwnd, lparam, .left, .up),
-        WM_RBUTTONDOWN => return try os_mouse_event(hwnd, lparam, .right, .down),
-        WM_RBUTTONUP => return try os_mouse_event(hwnd, lparam, .right, .up),
-        WM_MBUTTONDOWN => return try os_mouse_event(hwnd, lparam, .middle, .down),
-        WM_MBUTTONUP => return try os_mouse_event(hwnd, lparam, .middle, .up),
+        WM_LBUTTONDOWN => return try os_mouse_event(hwnd, .left, .down),
+        WM_LBUTTONUP => return try os_mouse_event(hwnd, .left, .up),
+        WM_RBUTTONDOWN => return try os_mouse_event(hwnd, .right, .down),
+        WM_RBUTTONUP => return try os_mouse_event(hwnd, .right, .up),
+        WM_MBUTTONDOWN => return try os_mouse_event(hwnd, .middle, .down),
+        WM_MBUTTONUP => return try os_mouse_event(hwnd, .middle, .up),
         WM_XBUTTONDOWN, WM_XBUTTONUP => return try os_mouse_event(
             hwnd,
-            lparam,
             switch ((wparam >> 16) & 0xFFFF) {
                 1 => wth.Mouse_Button.x1,
                 2 => wth.Mouse_Button.x2,

@@ -69,18 +69,17 @@ pub const Event = union(enum) {
     focus: if (options.multi_window) *Window else void,
     unfocus: if (options.multi_window) *Window else void,
 
-    mouse_button_press_os: Mouse_Button_OS,
-    mouse_button_release_os: Mouse_Button_OS,
-    mouse_enter_os: Mouse_Move_OS,
-    mouse_leave_os: Mouse_Move_OS,
-    mouse_move_os: Mouse_Move_OS,
+    mouse_button_press: Mouse_Button_Press_Or_Release,
+    mouse_button_release: Mouse_Button_Press_Or_Release,
+    mouse_enter: if (options.multi_window) *Window else void,
+    mouse_leave: if (options.multi_window) *Window else void,
+    mouse_move: Mouse_Move,
 
-    pub const Mouse_Button_OS = struct {
+    pub const Mouse_Button_Press_Or_Release = struct {
         button: Mouse_Button,
-        position: @Vector(2, Window.Coordinate),
         window: if (options.multi_window) *Window else void,
     };
-    pub const Mouse_Move_OS = struct {
+    pub const Mouse_Move = struct {
         position: @Vector(2, Window.Coordinate),
         window: if (options.multi_window) *Window else void,
     };
