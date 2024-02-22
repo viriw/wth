@@ -108,7 +108,7 @@ pub const Window = struct {
         size: @Vector(2, Window.Coordinate) = .{ 800, 608 },
         title: []const u8 = "hi :3",
         visible: bool = true,
-        win32_corner_preference: Win32_Corner_Preference = .default,
+        corner_preference: Corner_Preference = .default,
     };
     pub const Controls = packed struct {
         border: bool = true,
@@ -118,8 +118,12 @@ pub const Window = struct {
         resize: bool = true,
     };
     pub const Coordinate = u15;
-
-    pub const Win32_Corner_Preference = @import("win32.zig").Win32_Corner_Preference;
+    pub const Corner_Preference = enum {
+        default,
+        none,
+        round,
+        round_small,
+    };
 
     pub fn create(create_options: Create_Options) Create_Error!*Window {
         const allocator = get_allocator();
@@ -138,18 +142,18 @@ pub const Window = struct {
         window.impl.set_controls(controls);
     }
 
+    pub fn set_corner_preference(window: *Window, corner_preference: Corner_Preference) void {
+        if (@hasDecl(impl.Window, "set_corner_preference")) {
+            window.impl.set_corner_preference(corner_preference);
+        }
+    }
+
     pub fn set_size(window: *Window, size: @Vector(2, Window.Coordinate)) void {
         window.impl.set_size(size);
     }
 
     pub fn set_visible(window: *Window, visible: bool) void {
         window.impl.set_visible(visible);
-    }
-
-    pub fn set_win32_corner_preference(window: *Window, preference: Win32_Corner_Preference) void {
-        if (@hasDecl(impl.Window, "set_win32_corner_preference")) {
-            window.impl.set_win32_corner_preference(preference);
-        }
     }
 };
 

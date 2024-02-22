@@ -362,13 +362,6 @@ pub fn sync() wth.Sync_Error!void {
 
 // ---
 
-pub const Win32_Corner_Preference = enum {
-    default,
-    do_not_round,
-    round,
-    round_small,
-};
-
 pub const Window = struct {
     controls: wth.Window.Controls,
     cursor: ?HCURSOR,
@@ -455,7 +448,7 @@ pub const Window = struct {
         }
 
         window.refresh_system_menu();
-        window.set_win32_corner_preference(create_options.win32_corner_preference);
+        window.set_corner_preference(create_options.corner_preference);
         if (global.win11_21h2_or_later) {
             assert(DwmSetWindowAttribute(window.hwnd.?, DWMWA_USE_IMMERSIVE_DARK_MODE, &TRUE, @sizeOf(BOOL)) == S_OK);
         }
@@ -486,22 +479,25 @@ pub const Window = struct {
         assert(PostMessageW(window.hwnd.?, WTH_WM_SETCONTROLS, @as(Window_Controls_Representation, @bitCast(controls)), 0) != 0);
     }
 
+    pub inline fn set_corner_preference(
+        window: *const Window,
+        corner_preference: wth.Window.Corner_Preference,
+    ) void {
+        if (!global.win11_21h2_or_later) return;
+        assert(DwmSetWindowAttribute(
+            window.hwnd.?,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &@as(i32, @intFromEnum(corner_preference)),
+            @sizeOf(i32),
+        ) == S_OK);
+    }
+
     pub inline fn set_size(window: *const Window, size: @Vector(2, wth.Window.Coordinate)) void {
         assert(PostMessageW(window.hwnd.?, WTH_WM_SETSIZE, size[0], size[1]) != 0);
     }
 
     pub inline fn set_visible(window: *const Window, visible: bool) void {
         assert(PostMessageW(window.hwnd.?, WTH_WM_SETVISIBLE, @intFromBool(visible), 0) != 0);
-    }
-
-    pub inline fn set_win32_corner_preference(window: *const Window, preference: Win32_Corner_Preference) void {
-        if (!global.win11_21h2_or_later) return;
-        assert(DwmSetWindowAttribute(
-            window.hwnd.?,
-            DWMWA_WINDOW_CORNER_PREFERENCE,
-            &@as(i32, @intFromEnum(preference)),
-            @sizeOf(i32),
-        ) == S_OK);
     }
 
     // ---
