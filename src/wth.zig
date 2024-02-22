@@ -108,7 +108,7 @@ pub const Window = struct {
         size: @Vector(2, Window.Coordinate) = .{ 800, 608 },
         title: []const u8 = "hi :3",
         visible: bool = true,
-        corner_preference: Corner_Preference = .default,
+        corner_rounding_mode: Corner_Rounding_Mode = .default,
     };
     pub const Controls = packed struct {
         border: bool = true,
@@ -118,7 +118,7 @@ pub const Window = struct {
         resize: bool = true,
     };
     pub const Coordinate = u15;
-    pub const Corner_Preference = enum {
+    pub const Corner_Rounding_Mode = enum {
         default,
         none,
         round,
@@ -142,9 +142,9 @@ pub const Window = struct {
         window.impl.set_controls(controls);
     }
 
-    pub fn set_corner_preference(window: *Window, corner_preference: Corner_Preference) void {
-        if (@hasDecl(impl.Window, "set_corner_preference")) {
-            window.impl.set_corner_preference(corner_preference);
+    pub fn set_corner_rounding_mode(window: *Window, corner_rounding_mode: Corner_Rounding_Mode) void {
+        if (@hasDecl(impl.Window, "set_corner_rounding_mode")) {
+            window.impl.set_corner_rounding_mode(corner_rounding_mode);
         }
     }
 

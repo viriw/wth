@@ -448,7 +448,7 @@ pub const Window = struct {
         }
 
         window.refresh_system_menu();
-        window.set_corner_preference(create_options.corner_preference);
+        window.set_corner_rounding_mode(create_options.corner_rounding_mode);
         if (global.win11_21h2_or_later) {
             assert(DwmSetWindowAttribute(window.hwnd.?, DWMWA_USE_IMMERSIVE_DARK_MODE, &TRUE, @sizeOf(BOOL)) == S_OK);
         }
@@ -479,15 +479,15 @@ pub const Window = struct {
         assert(PostMessageW(window.hwnd.?, WTH_WM_SETCONTROLS, @as(Window_Controls_Representation, @bitCast(controls)), 0) != 0);
     }
 
-    pub inline fn set_corner_preference(
+    pub inline fn set_corner_rounding_mode(
         window: *const Window,
-        corner_preference: wth.Window.Corner_Preference,
+        corner_rounding_mode: wth.Window.Corner_Rounding_Mode,
     ) void {
         if (!global.win11_21h2_or_later) return;
         assert(DwmSetWindowAttribute(
             window.hwnd.?,
             DWMWA_WINDOW_CORNER_PREFERENCE,
-            &@as(i32, @intFromEnum(corner_preference)),
+            &@as(i32, @intFromEnum(corner_rounding_mode)),
             @sizeOf(i32),
         ) == S_OK);
     }

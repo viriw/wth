@@ -12,6 +12,8 @@ pub fn main() !void {
     const window = try wth.Window.create(.{});
     defer window.destroy();
 
+    window.set_corner_rounding_mode(.none);
+
     main: while (true) {
         for (wth.events()) |event| {
             std.debug.print("> {any}\n", .{event});
